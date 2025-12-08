@@ -1,0 +1,7 @@
+.env
+.DS_Store
+pdf/
+png/
+csv/
+csv-flagged/
+crops/
