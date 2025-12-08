@@ -4,6 +4,7 @@ import os
 import pytesseract
 from PIL import Image
 import json, requests
+import csv
 
 SYSTEM_PROMPT = """
 You are a strict JSON data extractor.
@@ -101,6 +102,21 @@ def extract_epic_id(crop, voter_id=None):
 
     return epic_text
 
+def append_to_csv(data: dict):
+    # Create the CSV file with header if it doesn't exist
+    file_exists = os.path.isfile(OUTPUT_CSV)
+
+    with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+
+        if not file_exists:
+            writer.writeheader()
+
+        # Convert None → "" for CSV cleanliness
+        sanitized = {k: ("" if v is None else v) for k, v in data.items()}
+
+        writer.writerow(sanitized)
+
 def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
     os.makedirs(out_dir, exist_ok=True)
     img = Image.open(input_png)
@@ -174,6 +190,7 @@ def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
             ocr_text = extract_text_from_image(f"{out_dir}/voter_{count:02d}.png")
             epic_id = extract_epic_id(crop, count)
             cleaned_data = clean_with_llm(ocr_text, epic_id)
+            append_to_csv(cleaned_data)
             print(f"Cleaned Data for voter_{count:02d}:\n{json.dumps(cleaned_data, indent=2)}")
 
             # Record the end time
@@ -190,4 +207,18 @@ def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
     print(f"Done! Total crops: {count - 1}")
 
 # RUN
-crop_voter_boxes_dynamic("./png/page_03.png")
+INPUT_PNG = "./png/page_03.png"
+OUTPUT_CSV = "./page-csv/page_03.csv"
+CSV_HEADERS = [
+    "epic_id",
+    "name",
+    "father_name",
+    "mother_name",
+    "husband_name",
+    "house_no",
+    "age",
+    "gender"
+]
+
+
+crop_voter_boxes_dynamic(INPUT_PNG)
