@@ -1,0 +1,31 @@
+epic_id,name,father_name,mother_name,husband_name,house_no,age,gender
+NHH3179710,DEEPA,,,RAMESH,53 WARD NUMBER 6,33,Female
+NHH0283556,Kalpana,,,Chandrakumar,54,38,Female
+NHH3334604,P RANJITHA,P PARTHA SARATHI,,,54/254,30,Female
+NHH2763670,AVANASI,Rangan,,,55,89,Male
+NHH2763688,Perumal,,,Avinasi,55,84,Female
+NHH2763696,Raj,Avinasi,,,55,54,Male
+NHH0470252,Saraswathi,,,Raj,55,41,Female
+NHH1675230,Rangasamy,Thiruman,,,56,84,Male
+NHH2763704,Maniraj,Rangasamy,,,56,55,Male
+NHH2763712,Shanthamani,,,Maniraj,56,49,Female
+NHH2763720,Krishnamoorthy,Velusamy,,,57,62,Male
+NHH2763738,Ramasamy,Rangan,,,57,59,Male
+NHH2763746,Rasamani,,,Krishnamoorthy,57,57,Female
+DHH5474044,Radhakrishnan,Krishanamoorthy,,,57,40,Male
+NHH0283762,Bhuvaneswari,Krishnasamy,,,57,33,Female
+DHH6052369,Ramesh,Palanisamy,,,59,42,Male
+NHH0848622,Devika,,,Ramesh,59,41,Female
+DHH1564921,Ravi,Palanisamy,,,59-1,44,Male
+DHH3740263,Rajalakshmi,,,,Num,43,
+NHH2763779,Arumugam,Chinnarayan,,,60,69,Male
+NHH2763787,Karupathal,,,Arumugam,60,59,Female
+DHH1565233,Thangaraj,Royan,,,61,59,Male
+NHH3354455,PONNUSANKAR RAVICHANDRAN,RAVICHANDRAN,,,62/31,22,Male
+NHH2763795,Pazhanisami,Thannasi,,,63,57,Male
+NHH2763803,Nagamani,,,Pazhanisami,63,54,Female
+NHH2763811,Chinnamaran,Thannasi,,,64,54,Male
+NHH2763829,Slyammal,,,Chinnamaran,64,51,Female
+NHHO991992,Suriya,Subramani,,,64,33,Female
+NHH0849240,Divya,Palaniswamy,,,64,31,Female
+NHH2763837,Karuppusamy,Rangan,,,68,74,Male
