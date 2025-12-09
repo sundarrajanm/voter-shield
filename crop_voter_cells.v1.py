@@ -207,8 +207,6 @@ def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
     print(f"Done! Total crops: {count - 1}")
 
 # RUN
-INPUT_PNG = "./png/page_03.png"
-OUTPUT_CSV = "./page-csv/page_03.csv"
 CSV_HEADERS = [
     "epic_id",
     "name",
@@ -220,5 +218,11 @@ CSV_HEADERS = [
     "gender"
 ]
 
+for i in range(5, 8):
+    PAGE = f"{i:02d}"
+    INPUT_PNG = f"./png/page_{PAGE}.png"
+    OUTPUT_CSV = f"./page-csv/page_{PAGE}.csv"
+    crop_voter_boxes_dynamic(INPUT_PNG)
 
-crop_voter_boxes_dynamic(INPUT_PNG)
+# crop_voter_boxes_dynamic(INPUT_PNG)
+# print(extract_text_from_image(f"./png/page_{PAGE}.png"))
