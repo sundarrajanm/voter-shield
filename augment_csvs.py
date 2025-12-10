@@ -1,6 +1,10 @@
 import os
 import pandas as pd
 
+import os
+import pandas as pd
+import numpy as np
+
 def augment_csv(
         df,
         part_no,
@@ -24,6 +28,40 @@ def augment_csv(
     return df
 
 
+def drop_fully_empty_rows(df):
+    """
+    Removes rows where *all main voter fields* are empty/None/NaN.
+    Metadata fields (part_no, constituency, section_no, section_name)
+    are NOT considered when checking emptiness.
+    """
+
+    voter_fields = [
+        "epic_id",
+        "name",
+        "father_name",
+        "mother_name",
+        "husband_name",
+        "house_no",
+        "age",
+        "gender"
+    ]
+
+    # Normalize whitespace → empty
+    df[voter_fields] = df[voter_fields].replace(
+        {
+            None: np.nan,
+            "": np.nan,
+            " ": np.nan,
+            "  ": np.nan
+        }
+    )
+
+    # Drop rows where all voter fields are NaN
+    df = df.dropna(subset=voter_fields, how="all")
+
+    return df
+
+
 def process_csv_folder(
         folder_path,
         part_no,
@@ -31,7 +69,8 @@ def process_csv_folder(
         output_folder="augmented_csvs"
     ):
     """
-    Reads all CSVs in the folder, augments them, and writes output.
+    Reads all CSVs in the folder, drops empty rows,
+    augments them, and writes output.
     """
 
     if not os.path.exists(output_folder):
@@ -44,10 +83,13 @@ def process_csv_folder(
 
             df = pd.read_csv(input_path)
 
+            # 1️⃣ Remove completely empty/noisy rows
+            df = drop_fully_empty_rows(df)
+
             # Extract page number: page_03.csv → 3
             page_num = int(file.replace("page_", "").replace(".csv", ""))
 
-            # Section assignment logic
+            # Section-based assignment logic
             if page_num <= 18:
                 section_no = 1
                 section_name = "Karupparayan Kovil Street Ward No-9"
@@ -55,6 +97,7 @@ def process_csv_folder(
                 section_no = 2
                 section_name = "Water Tank Street Ward No-9"
 
+            # 2️⃣ Metadata augmentation
             df = augment_csv(
                 df,
                 part_no=part_no,
@@ -63,6 +106,7 @@ def process_csv_folder(
                 section_name=section_name
             )
 
+            # 3️⃣ Save output
             output_path = os.path.join(output_folder, file)
             df.to_csv(output_path, index=False)
 
