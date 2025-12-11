@@ -171,9 +171,9 @@ NHH0283804,Sathya,Mohanraj,,,9A,33.0,Male,244,116-SULUR,1,Karupparayan Kovil Str
 NHH3334661,Mugeshkumar,Saravanan,,,10/20,23.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,-1,,False
 NHH3504040,GOWRI,PERUMAL,,,104,25.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,-1,,False
 DHH5472428,Baby,,,Subramaniam,108,46.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,-1,,False
-NHH0128215,Ramalingam,Pethan,,,11,67.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,30,Husband–wife age gap >20: Ramalingam (67.0) & Parvathi (5.0),True
-NHH0128207,Parvathi,,,Ramalingam,11,5.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,30,Husband–wife age gap >20: Ramalingam (67.0) & Parvathi (5.0); Age < 18 (ineligible voter),True
-NHH0470021,Palanisamy,Ramalingam,,,11,38.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,30,Husband–wife age gap >20: Ramalingam (67.0) & Parvathi (5.0),True
+NHH0128215,Ramalingam,Pethan,,,11,67.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,30,,False
+NHH0128207,Parvathi,,,Ramalingam,11,5.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,30,Age < 18 (ineligible voter),True
+NHH0470021,Palanisamy,Ramalingam,,,11,38.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,30,,False
 NHH0469635,Kalamani,,,Rangasamy,11,38.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,-1,,False
 NHH3334646,RADHA,PALANISAMY,,,11/15,33.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,-1,,False
 NHH2266989,gokul nisanth,ramasawamy,,,11-38,27.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_05.csv,-1,,False
@@ -233,9 +233,9 @@ NHH0598490,sugauna,,alakesan,,100,43.0,Female,244,116-SULUR,2,Water Tank Street 
 NHH0194274,Thangaraj,Veluchamy,,,100-3843,37.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,-1,,False
 NHH2705333,Velurnani,,,Kalisamy,102,61.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,-1,,False
 DHH1673318,Balasubiramaniam,Kalisamy,,,102,43.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,-1,,False
-DHH3740016,Velusamy,Kalisamy,,,102,41.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,69,Parent–child age gap <15: Velusamy (41.0) & Nithya (27.0),True
+DHH3740016,Velusamy,Kalisamy,,,102,41.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,69,,False
 NHH2225944,Maheswari,,,balasuppiramani,102,35.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,-1,,False
-NHH2225779,Nithya,Velusamy,,,102,27.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,69,Parent–child age gap <15: Velusamy (41.0) & Nithya (27.0),True
+NHH2225779,Nithya,Velusamy,,,102,27.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,69,,False
 DHH5996913,Sivagami,,,Rasiyappan,104,70.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,-1,,False
 DHH1562081,REASWARA MOORTHY,Rasiyappan,,,104,43.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,-1,,False
 DHH1673540,Chinnasamy,Sengaliappan,,,105,73.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_38.csv,62,,False
@@ -310,8 +310,8 @@ NHH0283978,Sathish,Thirumoorthy,,,37,35.0,Male,244,116-SULUR,2,Water Tank Street
 NHH1240613,Karunyadevi,Thirumoorthy,,,37,31.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,-1,,False
 NHH0988618,Meena,,,Kannan,"37-B, Maravan Thottam",40.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,-1,,False
 NHH1240712,Muthu,Shanmugam,,,37c,49.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,70,,False
-NHHO469404,Saravanan,Mannarsamy,,,37D,460.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,71,Husband–wife age gap >20: Saravanan (460.0) & Selvi (53.0); Age > 90 (likely outdated record),True
-NHH0469296,Selvi,,,Saravanan,37D,53.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,71,Husband–wife age gap >20: Saravanan (460.0) & Selvi (53.0),True
+NHHO469404,Saravanan,Mannarsamy,,,37D,460.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,71,Age > 90 (likely outdated record),True
+NHH0469296,Selvi,,,Saravanan,37D,53.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,71,,False
 NHH3639671,MAHENDRAN HARIKRISHNAN,,,JACQLINE MAHENDRAN,37D,41.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,72,,False
 NHH3639754,JACQLINE MAHENDRAN,,,MAHENDRAN,37D,39.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,72,,False
 NHHO128389,Mariyapichi,Anthoni,,,38,64.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_28.csv,-1,More than 10 voters in same house (count=15),True
@@ -558,8 +558,8 @@ NHH2701167,Rukmani,,,Kandhasamy,43-1,,Female,244,116-SULUR,2,Water Tank Street W
 DHH3740669,Subbulakshmi,,,Kaliappan,43-1,50.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,86,,False
 DHH5474721,Murukesh,Kandasamy,,,43-1,42.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,-1,,False
 DHH3740586,Chithra,,,Easwaran,43-2,47.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,-1,,False
-NHH2701175,Rasagounder,Rasagounder,,,44,76.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,87,Parent–child age gap <15: Rasagounder (76.0) & Rasagounder (76.0),True
-NHH2701183,Valliyammial,,,Rasagounder,44,74.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,87,Parent–child age gap <15: Rasagounder (76.0) & Rasagounder (76.0),True
+NHH2701175,Rasagounder,Rasagounder,,,44,76.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,87,,False
+NHH2701183,Valliyammial,,,Rasagounder,44,74.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,87,,False
 NHH3179694,VISHNU PRIYA,RAMASAMY,,,44,24.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,-1,,False
 NHH3504776,MAGESWARI,RAMASAMY,,,44,21.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,-1,,False
 NHH1240530,Ganesan,Chelliah,,,45,47.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_33.csv,-1,,False
@@ -791,8 +791,8 @@ NHH0991927,Ramesh,Patteswaran,,,34,43.0,Male,244,116-SULUR,1,Karupparayan Kovil 
 NHH1608785,Kalpana,Munian,,,354,28.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,-1,,False
 NHH1763614,ARUNKUMAR,Muniyan,,,35A,27.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,-1,,False
 NHH1643493,Albonsameri,Palanisamy,,,3543,59.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,-1,,False
-NHH1608018,Suresh,Palanisamy,,,3543,38.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,58,Parent–child age gap <15: Suresh (38.0) & Shobha (37.0),True
-NHH1643469,Shobha,Suresh,,,3543,37.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,58,Parent–child age gap <15: Suresh (38.0) & Shobha (37.0),True
+NHH1608018,Suresh,Palanisamy,,,3543,38.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,58,,False
+NHH1643469,Shobha,Suresh,,,3543,37.0,Female,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,58,,False
 NHH0283770,Gowtham,Shanmugam,,,358,33.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,-1,,False
 NHH3179736,dinesh,murugan,,,34/1084,23.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,-1,,False
 NHH3179645,kumaresan,maruthasalam,,,362/107,24.0,Male,244,116-SULUR,1,Karupparayan Kovil Street Ward No-9,page_09.csv,-1,,False
@@ -910,8 +910,8 @@ DHH5473566,Padmavathy,,,Singaimuthu,47,58.0,Female,244,116-SULUR,2,Water Tank St
 NHH1344722,Sivasankar,Viswanathan,,,47,29.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,-1,,False
 NHH1341930,Lingashwari,,,Murukanantham,47-3,46.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,-1,,False
 NHH0469684,Karthikailakshmi,,,Gnanapandithan,47B,41.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,-1,,False
-NHH2701217,Ramasamy,NAGGAPAUDAYAR,,,48,84.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,127,Parent–child age gap <15: Ramasamy (84.0) & Visuvanathan (78.0),True
-NHH2701225,Visuvanathan,Ramasamy,,,48,78.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,127,Parent–child age gap <15: Ramasamy (84.0) & Visuvanathan (78.0),True
+NHH2701217,Ramasamy,NAGGAPAUDAYAR,,,48,84.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,127,,False
+NHH2701225,Visuvanathan,Ramasamy,,,48,78.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,127,,False
 NHH2701233,THAIVATHAL,,,Ramasarny,48,76.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,-1,,False
 NHH0284034,Anandhan,Thandapani,,,48,49.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,128,,False
 NHHOZB4042,Jothilakshmi,,,Anandhan,48,42.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_34.csv,128,,False
@@ -986,8 +986,8 @@ NHH2697985,Rajeswari,,,Chandrasekaran,10,52.0,Female,244,116-SULUR,2,Water Tank 
 DHH1674076,Rasakanilasar,RASAYA NADAR,,,10,46.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,-1,,False
 NHH0194340,Maragatham,,,Vijayakumar,10,39.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,-1,,False
 NHH2225845,Hariharan,Sanmugam,,,10,36.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,-1,,False
-DHH5470935,Dineshkumar,Rajagopal,,,10-34,45.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,135,Parent–child age gap <15: Dineshkumar (45.0) & Umarani (39.0),True
-DHH5470927,Umarani,Dineshkumar,,,10-34,39.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,135,Parent–child age gap <15: Dineshkumar (45.0) & Umarani (39.0),True
+DHH5470935,Dineshkumar,Rajagopal,,,10-34,45.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,135,,False
+DHH5470927,Umarani,Dineshkumar,,,10-34,39.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,135,,False
 NHH2697993,Marathal,,,NATARAAJ,11,78.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,-1,,False
 NHH2696017,Ravikumar,NATARAJ,,,11,59.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,-1,,False
 NHH0128272,Ramaswamy,Kandasamy Gounder,,,11,58.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_22.csv,-1,,False
@@ -1042,8 +1042,8 @@ NHH3461423,Nithya Rajagopal,,,Rajagopal Ponnusamy,82,33.0,Female,244,116-SULUR,2
 NHH0849257,Sindhu,Ponnusamy,,,82,32.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,-1,,False
 NHH1239821,Moorthi,Arumugam,,,82,30.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,-1,,False
 NHH2705168,Subbulakshmi,,,Subramaniam,83,59.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,-1,,False
-NHH2705176,Rasagounder,Rasagounder,,,84,86.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,146,Parent–child age gap <15: Rasagounder (86.0) & Rasagounder (86.0),True
-NHH2705184,KUMARATHAL,,,Rasagounder,84,81.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,146,Parent–child age gap <15: Rasagounder (86.0) & Rasagounder (86.0),True
+NHH2705176,Rasagounder,Rasagounder,,,84,86.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,146,,False
+NHH2705184,KUMARATHAL,,,Rasagounder,84,81.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,146,,False
 DHH5996905,Jothimani,,,Natarajan,84,54.0,Female,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,-1,,False
 NHH2705218,Mayilvaganam,Sivashankarapandiyan,,,84-1,51.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,-1,,False
 NHH2705226,Gnanapandithan,Sivashankarapandiyan,,,84-1,49.0,Male,244,116-SULUR,2,Water Tank Street Ward No-9,page_37.csv,-1,,False

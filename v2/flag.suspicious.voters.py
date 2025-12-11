@@ -126,19 +126,19 @@ def process_voters(csv_path, output_path):
     df['reasons'] = [[] for _ in range(len(df))]
     df['suspicious'] = False
 
-    # -----------------------------------------------------
-    # Apply Rule 1: Age anomaly within clusters
-    # -----------------------------------------------------
-    for cluster_id, group in df.groupby("cluster_id"):
+    # # -----------------------------------------------------
+    # # Apply Rule 1: Age anomaly within clusters
+    # # -----------------------------------------------------
+    # for cluster_id, group in df.groupby("cluster_id"):
 
-        # Skip non-family clusters
-        if cluster_id == -1:            
-            continue
+    #     # Skip non-family clusters
+    #     if cluster_id == -1:            
+    #         continue
 
-        reasons = age_suspicion_in_cluster(group)
-        if reasons:
-            df.loc[group.index, 'reasons'] = df.loc[group.index, 'reasons'].apply(lambda lst: lst + reasons)
-            df.loc[group.index, 'suspicious'] = True
+    #     reasons = age_suspicion_in_cluster(group)
+    #     if reasons:
+    #         df.loc[group.index, 'reasons'] = df.loc[group.index, 'reasons'].apply(lambda lst: lst + reasons)
+    #         df.loc[group.index, 'suspicious'] = True
 
     # -----------------------------------------------------
     # Apply Rule 2: More than 10 voters in same house+street
