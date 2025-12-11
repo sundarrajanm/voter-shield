@@ -31,8 +31,9 @@ st.write(f"**Total voters loaded: {len(df)}**")
 
 st.subheader("Search Filters")
 
+show_only_suspicious = st.checkbox("Show suspicious voters")
 cluster_id_filter = st.text_input("Family Cluster Id")
-section_filter = st.text_input("Section Number")
+# section_filter = st.text_input("Section Number")
 name_filter = st.text_input("Name")
 epic_filter = st.text_input("EPIC ID")
 house_filter = st.text_input("House Number")
@@ -44,10 +45,10 @@ def highlight_missing(val):
         return "background-color: #ECECEC"
     return ""
 
-def highlight_isolated(row):
-    if row["cluster_id"] == -1:
-        return ["background-color: #ffcccc"] * len(row)  # pale red entire row
-    return [""] * len(row)
+def highlight_suspicious(row):
+    if row["suspicious"]:
+        return ['background-color: #FFE5B4'] * len(row)   # light peach/orange
+    return [''] * len(row)
 
 if name_filter:
     filtered_df = filtered_df[filtered_df["name"].str.contains(name_filter, case=False, na=False)]
@@ -61,20 +62,22 @@ if house_filter:
 if cluster_id_filter:
     filtered_df = filtered_df[filtered_df["cluster_id"].astype(str) == str(cluster_id_filter)]
 
-if section_filter:
-    filtered_df = filtered_df[filtered_df["section_no"].astype(str) == str(section_filter)]
+# if section_filter:
+#     filtered_df = filtered_df[filtered_df["section_no"].astype(str) == str(section_filter)]
+
+if show_only_suspicious:
+    filtered_df = filtered_df[filtered_df["suspicious"] == True]
 
 # Render table
 styled = (
     filtered_df
         .style
-        .apply(highlight_isolated, axis=1)   # row-level styling
+        .apply(highlight_suspicious, axis=1) # row-level styling
         .applymap(highlight_missing)         # cell-level styling
 )
 
 st.dataframe(styled, use_container_width=True)
 
 st.metric("Total Voters", len(filtered_df))
-st.metric("Male", len(filtered_df[filtered_df["gender"] == "Male"]))
-st.metric("Female", len(filtered_df[filtered_df["gender"] == "Female"]))
+st.metric("Suspicious Voters", len(filtered_df[filtered_df["suspicious"] == True]))
 st.metric("Unique Families", filtered_df["cluster_id"].nunique())
