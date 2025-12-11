@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import numpy as np
 
 st.set_page_config(page_title="VoterShield Viewer", layout="wide")
 
@@ -32,6 +33,27 @@ st.write(f"**Total voters loaded: {len(df)}**")
 st.subheader("Search Filters")
 
 show_only_suspicious = st.checkbox("Show suspicious voters")
+
+# ------------------------------------------------------
+# Rule Filter Dropdown (NEW)
+# ------------------------------------------------------
+# Extract unique rule names safely
+rule_options = (
+    df["Rule"]
+        .fillna("")
+        .str.split(";")
+        .explode()
+        .str.strip()
+        .replace("", np.nan)
+        .dropna()
+        .unique()
+)
+
+rule_filter = st.selectbox(
+    "Filter by Rule",
+    options=["All Rules"] + sorted(rule_options)
+)
+
 cluster_id_filter = st.text_input("Family Cluster Id")
 # section_filter = st.text_input("Section Number")
 name_filter = st.text_input("Name")
@@ -67,6 +89,10 @@ if cluster_id_filter:
 
 if show_only_suspicious:
     filtered_df = filtered_df[filtered_df["suspicious"] == True]
+
+# Apply rule filter
+if rule_filter != "All Rules":
+    filtered_df = filtered_df[filtered_df["Rule"].str.contains(rule_filter, na=False)]
 
 # Render table
 styled = (
