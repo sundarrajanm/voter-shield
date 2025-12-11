@@ -54,10 +54,10 @@ if name_filter:
     filtered_df = filtered_df[filtered_df["name"].str.contains(name_filter, case=False, na=False)]
 
 if epic_filter:
-    filtered_df = filtered_df[filtered_df["epic_id"].str.contains(epic_filter, case=False, na=False)]
+    filtered_df = filtered_df[filtered_df["epic_id"].astype(str) == str(epic_filter)]
 
 if house_filter:
-    filtered_df = filtered_df[filtered_df["house_no"].astype(str).str.contains(house_filter, case=False, na=False)]
+    filtered_df = filtered_df[filtered_df["house_no"].astype(str) == str(house_filter)]
 
 if cluster_id_filter:
     filtered_df = filtered_df[filtered_df["cluster_id"].astype(str) == str(cluster_id_filter)]
