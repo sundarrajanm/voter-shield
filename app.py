@@ -30,6 +30,16 @@ df = load_all_csvs(FOLDER)
 
 st.write(f"**Total voters loaded: {len(df)}**")
 
+# ------------------------------------------------------------------
+# 🔧 DATA FIXES FOR UI
+# ------------------------------------------------------------------
+
+# 1️⃣ Age as integer
+if "age" in df.columns:
+    df["age"] = df["age"].round(0).astype("Int64")
+
+# ------------------------------------------------------
+
 st.subheader("Search Filters")
 
 show_only_suspicious = st.checkbox("Show suspicious voters")
@@ -39,7 +49,7 @@ show_only_suspicious = st.checkbox("Show suspicious voters")
 # ------------------------------------------------------
 # Extract unique rule names safely
 rule_options = (
-    df["Rule"]
+    df["rule"]
         .fillna("")
         .str.split(";")
         .explode()
@@ -62,16 +72,6 @@ house_filter = st.text_input("House Number")
 
 filtered_df = df.copy()
 
-def highlight_missing(val):
-    if pd.isna(val) or val == "" or val == "null":
-        return "background-color: #ECECEC"
-    return ""
-
-def highlight_suspicious(row):
-    if row["suspicious"]:
-        return ['background-color: #FFE5B4'] * len(row)   # light peach/orange
-    return [''] * len(row)
-
 if name_filter:
     filtered_df = filtered_df[filtered_df["name"].str.contains(name_filter, case=False, na=False)]
 
@@ -92,7 +92,22 @@ if show_only_suspicious:
 
 # Apply rule filter
 if rule_filter != "All Rules":
-    filtered_df = filtered_df[filtered_df["Rule"].str.contains(rule_filter, na=False)]
+    filtered_df = filtered_df[filtered_df["rule"].str.contains(rule_filter, na=False)]
+
+# ------------------------------------------------------------------
+# 🎨 STYLING
+# ------------------------------------------------------------------
+
+def highlight_missing(val):
+    if pd.isna(val) or val == "" or val == "null":
+        return "background-color: #ECECEC"
+    return ""
+
+def highlight_suspicious(row):
+    if row["suspicious"]:
+        return ['background-color: #FFE5B4'] * len(row)   # light peach/orange
+    return [''] * len(row)
+
 
 # Render table
 styled = (
@@ -102,7 +117,35 @@ styled = (
         .applymap(highlight_missing)         # cell-level styling
 )
 
-st.dataframe(styled, use_container_width=True)
+# st.dataframe(styled, use_container_width=True)
+# ------------------------------------------------------------------
+# 🧾 TABLE RENDERING (IMPORTANT PART)
+# ------------------------------------------------------------------
+
+st.subheader("Voter Data")
+
+st.data_editor(
+    styled,
+    use_container_width=True,
+    hide_index=True,
+    column_config={
+        "age": st.column_config.NumberColumn(
+            "Age",
+            format="%d"
+        ),
+        "reasons": st.column_config.TextColumn(
+            "Reasons",
+            width="large"
+        ),
+        "rule": st.column_config.TextColumn(
+            "Rule",
+            width="large"
+        ),
+        "suspicious": st.column_config.CheckboxColumn(
+            "Suspicious"
+        ),
+    }
+)
 
 st.metric("Total Voters", len(filtered_df))
 st.metric("Suspicious Voters", len(filtered_df[filtered_df["suspicious"] == True]))

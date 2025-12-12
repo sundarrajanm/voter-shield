@@ -113,7 +113,7 @@ def process_voters(csv_path, output_path):
 
     # Initialize output columns
     df['reasons'] = [[] for _ in range(len(df))]
-    df['Rule'] = [[] for _ in range(len(df))]
+    df['rule'] = [[] for _ in range(len(df))]
     df['suspicious'] = False
 
     # # -----------------------------------------------------
@@ -136,7 +136,7 @@ def process_voters(csv_path, output_path):
         reason, rule = house_overcrowding(group)
         if reason:
             df.loc[group.index, 'reasons'] = df.loc[group.index, 'reasons'].apply(lambda lst: lst + [reason])
-            df.loc[group.index, 'Rule'] = df.loc[group.index, 'Rule'].apply(lambda lst: lst + [rule])
+            df.loc[group.index, 'rule'] = df.loc[group.index, 'rule'].apply(lambda lst: lst + [rule])
             df.loc[group.index, 'suspicious'] = True
 
     # -----------------------------------------------------
@@ -146,12 +146,12 @@ def process_voters(csv_path, output_path):
         reasons, rules = anomaly_checks(row)
         if reasons:
             df.at[i, 'reasons'] = df.at[i, 'reasons'] + reasons
-            df.at[i, 'Rule'] = df.at[i, 'Rule'] + rules
+            df.at[i, 'rule'] = df.at[i, 'rule'] + rules
             df.at[i, 'suspicious'] = True
 
     # Convert arrays → strings
     df['reasons'] = df['reasons'].apply(lambda x: "; ".join(x))
-    df['Rule'] = df['Rule'].apply(lambda x: "; ".join(sorted(set(x))) if x else "")
+    df['rule'] = df['rule'].apply(lambda x: "; ".join(sorted(set(x))) if x else "")
 
     df.to_csv(output_path, index=False)
     print(f"Completed. Output saved to {output_path}")
@@ -164,4 +164,4 @@ def process_voters(csv_path, output_path):
 # Execute
 # ---------------------------------------------------------
 if __name__ == "__main__":
-    process_voters("./voter_list.csv", "./final/voters_flagged.csv")
+    process_voters("./voter_list_with_serial.csv", "./final/voters_flagged.csv")

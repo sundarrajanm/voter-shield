@@ -218,7 +218,7 @@ CSV_HEADERS = [
     "gender"
 ]
 
-for i in range(13, 44):
+for i in range(3, 4):
     PAGE = f"{i:02d}"
     INPUT_PNG = f"./png/page_{PAGE}.png"
     OUTPUT_CSV = f"./page-csv/page_{PAGE}.csv"
