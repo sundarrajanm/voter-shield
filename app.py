@@ -7,7 +7,7 @@ st.set_page_config(page_title="VoterShield Viewer", layout="wide")
 
 st.title("🛡️ VoterShield — Basic View")
 
-FOLDER = "./final"
+FOLDER = "./csv"
 
 @st.cache_data
 def load_all_csvs(folder):
@@ -35,64 +35,64 @@ st.write(f"**Total voters loaded: {len(df)}**")
 # ------------------------------------------------------------------
 
 # 1️⃣ Age as integer
-if "age" in df.columns:
-    df["age"] = df["age"].round(0).astype("Int64")
+# if "age" in df.columns:
+#     df["age"] = df["age"].round(0).astype("Int64")
 
 # ------------------------------------------------------
 
-st.subheader("Search Filters")
+# st.subheader("Search Filters")
 
-show_only_suspicious = st.checkbox("Show suspicious voters")
+# show_only_suspicious = st.checkbox("Show suspicious voters")
 
 # ------------------------------------------------------
 # Rule Filter Dropdown (NEW)
 # ------------------------------------------------------
 # Extract unique rule names safely
-rule_options = (
-    df["rule"]
-        .fillna("")
-        .str.split(";")
-        .explode()
-        .str.strip()
-        .replace("", np.nan)
-        .dropna()
-        .unique()
-)
+# rule_options = (
+#     df["rule"]
+#         .fillna("")
+#         .str.split(";")
+#         .explode()
+#         .str.strip()
+#         .replace("", np.nan)
+#         .dropna()
+#         .unique()
+# )
 
-rule_filter = st.selectbox(
-    "Filter by Rule",
-    options=["All Rules"] + sorted(rule_options)
-)
+# rule_filter = st.selectbox(
+#     "Filter by Rule",
+#     options=["All Rules"] + sorted(rule_options)
+# )
 
-cluster_id_filter = st.text_input("Family Cluster Id")
+# cluster_id_filter = st.text_input("Family Cluster Id")
 # section_filter = st.text_input("Section Number")
-name_filter = st.text_input("Name")
-epic_filter = st.text_input("EPIC ID")
-house_filter = st.text_input("House Number")
+# name_filter = st.text_input("Name")
+# epic_filter = st.text_input("EPIC ID")
+# house_filter = st.text_input("House Number")
 
 filtered_df = df.copy()
 
-if name_filter:
-    filtered_df = filtered_df[filtered_df["name"].str.contains(name_filter, case=False, na=False)]
+# if name_filter:
+#     filtered_df = filtered_df[filtered_df["name"].str.contains(name_filter, case=False, na=False)]
 
-if epic_filter:
-    filtered_df = filtered_df[filtered_df["epic_id"].astype(str) == str(epic_filter)]
+# if epic_filter:
+#     filtered_df = filtered_df[filtered_df["epic_id"].astype(str) == str(epic_filter)]
 
-if house_filter:
-    filtered_df = filtered_df[filtered_df["house_no"].astype(str) == str(house_filter)]
+# if house_filter:
+#     filtered_df = filtered_df[filtered_df["house_no"].astype(str) == str(house_filter)]
 
-if cluster_id_filter:
-    filtered_df = filtered_df[filtered_df["cluster_id"].astype(str) == str(cluster_id_filter)]
+# if cluster_id_filter:
+#     filtered_df = filtered_df[filtered_df["cluster_id"].astype(str) == str(cluster_id_filter)]
 
 # if section_filter:
 #     filtered_df = filtered_df[filtered_df["section_no"].astype(str) == str(section_filter)]
 
-if show_only_suspicious:
-    filtered_df = filtered_df[filtered_df["suspicious"] == True]
+# if show_only_suspicious:
+#     filtered_df = filtered_df[filtered_df["suspicious"] == True]
 
 # Apply rule filter
-if rule_filter != "All Rules":
-    filtered_df = filtered_df[filtered_df["rule"].str.contains(rule_filter, na=False)]
+# if rule_filter != "All Rules":
+#     filtered_df = filtered_df[filtered_df["rule"].str.contains(rule_filter, na=False)]
 
 # ------------------------------------------------------------------
 # 🎨 STYLING
@@ -110,12 +110,12 @@ def highlight_suspicious(row):
 
 
 # Render table
-styled = (
-    filtered_df
-        .style
-        .apply(highlight_suspicious, axis=1) # row-level styling
-        .applymap(highlight_missing)         # cell-level styling
-)
+# styled = (
+#     filtered_df
+#         .style
+#         .apply(highlight_suspicious, axis=1) # row-level styling
+#         .applymap(highlight_missing)         # cell-level styling
+# )
 
 # st.dataframe(styled, use_container_width=True)
 # ------------------------------------------------------------------
@@ -125,7 +125,7 @@ styled = (
 st.subheader("Voter Data")
 
 st.data_editor(
-    styled,
+    df,
     use_container_width=True,
     hide_index=True,
     column_config={
@@ -133,20 +133,20 @@ st.data_editor(
             "Age",
             format="%d"
         ),
-        "reasons": st.column_config.TextColumn(
-            "Reasons",
-            width="large"
-        ),
-        "rule": st.column_config.TextColumn(
-            "Rule",
-            width="large"
-        ),
-        "suspicious": st.column_config.CheckboxColumn(
-            "Suspicious"
-        ),
+        # "reasons": st.column_config.TextColumn(
+        #     "Reasons",
+        #     width="large"
+        # ),
+        # "rule": st.column_config.TextColumn(
+        #     "Rule",
+        #     width="large"
+        # ),
+        # "suspicious": st.column_config.CheckboxColumn(
+        #     "Suspicious"
+        # ),
     }
 )
 
-st.metric("Total Voters", len(filtered_df))
-st.metric("Suspicious Voters", len(filtered_df[filtered_df["suspicious"] == True]))
-st.metric("Unique Families", filtered_df["cluster_id"].nunique())
+st.metric("Total Voters", len(df))
+# st.metric("Suspicious Voters", len(filtered_df[filtered_df["suspicious"] == True]))
+# st.metric("Unique Families", filtered_df["cluster_id"].nunique())

@@ -3,6 +3,10 @@
 pdf/
 png/
 csv/
+page-csv/
+augmented_csvs/
+ocr/
 csv-flagged/
 crops/
-debug_epic_right40/
+debug_*/
+__pycache__
