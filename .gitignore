@@ -2,7 +2,6 @@
 .DS_Store
 pdf/
 png/
-csv/
 page-csv/
 augmented_csvs/
 ocr/
