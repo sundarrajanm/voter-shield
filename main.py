@@ -7,40 +7,56 @@ from config import (
 
 from pdf_to_png import convert_pdfs_to_png
 from crop_voters import crop_voter_boxes
-from ocr_extract import extract_ocr_from_crops, extract_ocr_from_png
+from ocr_extract import extract_ocr_from_crops_in_parallel
 from csv_extract import clean_and_extract_csv
 from write_csv import write_final_csv
-# from llm_cleaner import clean_with_llm_batch
-# from serial_number import assign_serial_numbers
-# from csv_writer import write_final_csv
+
+from logger import setup_logger
+from progress import get_progress
+
+from rich.console import Console
+
+logger = setup_logger()
+console = Console()
 
 def main():
-    print("🛡️ VoterShield Pipeline Started")
+    logger.info("🛡️ VoterShield Pipeline Started")
 
-    # # 1️⃣ PDF → PNG
-    # print("\n📄 Step 1: Converting PDFs to PNGs")
-    # convert_pdfs_to_png(PDF_DIR, PNG_DIR, DPI)
+    progress = get_progress()
 
-    # # 2️⃣ Crop voter boxes
-    # print("\n✂️ Step 2: Cropping voter boxes")
-    # crop_voter_boxes(PNG_DIR, CROPS_DIR)
+    with progress:
+        # 1️⃣ PDF → PNG
+        convert_pdfs_to_png(PDF_DIR, PNG_DIR, DPI, progress=progress)
+        logger.info("✅ PDF conversion completed")
 
-    # 3️⃣ OCR extraction
-    print("\n🔍 Step 3: OCR extraction")
-    ocr_results = extract_ocr_from_crops(CROPS_DIR)
+        # 2️⃣ Crop voter boxes
+        crop_voter_boxes(PNG_DIR, CROPS_DIR, progress=progress)
+        logger.info("✅ Cropping completed")
 
-    # 4️⃣ CSV extraction
-    print("\n🧠 Step 4: CSV extraction")
-    import json
-    with open("ocr/ocr_results.json", "r", encoding="utf-8") as f:
-        ocr_results = json.load(f)
-    cleaned_records = clean_and_extract_csv(ocr_results)
-    
-    # # 6️⃣ Write CSV
-    write_final_csv(cleaned_records, CSV_DIR)
-    # print("\n📊 Step 6: Writing final CSV")
+        # 3️⃣ OCR extraction
+        logger.info("🔍 Starting OCR extraction")
+        ocr_results = extract_ocr_from_crops_in_parallel(
+            CROPS_DIR,
+            progress=progress
+        )
+        logger.info(f"📊 OCR completed — {len(ocr_results)} blocks")
 
-    print("\n🎉 Pipeline completed successfully!")
+        # 4️⃣ CSV extraction
+        logger.info("🧠 Parsing OCR → structured voters")
+        cleaned_records = clean_and_extract_csv(ocr_results, progress=progress)
+        logger.info(f"📊 Extracted {len(cleaned_records)} voters")
+
+        # 5️⃣ Write CSV
+        task = progress.add_task("💾 Writing final CSV", total=1)
+        write_final_csv(cleaned_records, CSV_DIR)
+        progress.update(task, advance=1)
+        logger.info("✅ Final CSV written")
+
+    logger.info("🎉 Pipeline completed successfully!")
 
 if __name__ == "__main__":
     main()
+
+# import json
+# with open("ocr/ocr_results.json", "r", encoding="utf-8") as f:
+#     ocr_results = json.load(f)

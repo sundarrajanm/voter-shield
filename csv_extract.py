@@ -3,6 +3,8 @@ import time
 import re
 import json
 from typing import List, Dict, Optional
+from logger import setup_logger
+logger = setup_logger()
 
 def remove_unwanted_words(ocr_text, noise_words):
     cleaned = ocr_text
@@ -242,7 +244,7 @@ def parse_ocr_text(ocr_text: str) -> List[Dict]:
 
 #     end_time = time.perf_counter()
 #     elapsed_time = end_time - start_time
-#     print(f"Time taken by clean_and_extract_csv: {elapsed_time:.6f} seconds.")
+#     logger.info(f"Time taken by clean_and_extract_csv: {elapsed_time:.6f} seconds.")
 
 #     # Write results to ocr_results_cleaned.json for inspection
 #     with open("ocr/ocr_results_cleaned.json", "w", encoding="utf-8") as f:
@@ -300,7 +302,7 @@ def parse_ocr_text(ocr_text: str) -> List[Dict]:
 #         try:
 #             voters = parse_ocr_text(text)
 #         except Exception as e:
-#             print(f"❌ Parsing failed for {source_image}: {e}")
+#             logger.info(f"❌ Parsing failed for {source_image}: {e}")
 #             voters = []
 
 #         # 4️⃣ Attach source_image to every voter
@@ -317,16 +319,23 @@ def parse_ocr_text(ocr_text: str) -> List[Dict]:
 #             json.dump(voters, f, ensure_ascii=False, indent=2)
 
 #     end_time = time.perf_counter()
-#     print(f"⏱️ clean_and_extract_csv completed in {end_time - start_time:.3f} sec")
-#     print(f"📊 Total voters extracted: {len(all_voters)}")
+#     logger.info(f"⏱️ clean_and_extract_csv completed in {end_time - start_time:.3f} sec")
+#     logger.info(f"📊 Total voters extracted: {len(all_voters)}")
 
 #     return all_voters
 
-def clean_and_extract_csv(ocr_results):
+def clean_and_extract_csv(ocr_results, progress=None):
     start_time = time.perf_counter()
 
     all_voters = []
+    task = None
+    if progress:
+        task = progress.add_task("🧠 Cleaning OCR → structured voters", total=len(ocr_results)
+)
     for item in ocr_results:
+        if progress:
+            progress.advance(task)
+
         source_image = item["source_image"]
         ocr_text = item["ocr_text"]
 
@@ -338,8 +347,8 @@ def clean_and_extract_csv(ocr_results):
 
     end_time = time.perf_counter()
 
-    print(f"⏱️ clean_and_extract_csv completed in {end_time - start_time:.3f} sec")
-    print(f"📊 Total voters extracted: {len(all_voters)}")
+    logger.info(f"⏱️ clean_and_extract_csv completed in {end_time - start_time:.3f} sec")
+    logger.info(f"📊 Total voters extracted: {len(all_voters)}")
 
     return all_voters
 
@@ -352,6 +361,7 @@ def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
         "name": None,
         "father_name": None,
         "husband_name": None,
+        "mother_name": None,
         "other_name": None,
         "house_no": None,
         "age": None,
@@ -387,6 +397,12 @@ def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
             m = re.search(r"Father\s+Name\s*[:=]\s*(.+)", line)
             if m:
                 result["father_name"] = m.group(1).strip()
+
+        # --- MOTHER ---
+        elif line.startswith("Mother"):
+            m = re.search(r"Mother\s+Name\s*[:=]\s*(.+)", line)
+            if m:
+                result["mother_name"] = m.group(1).strip()
 
         # --- HUSBAND ---
         elif line.startswith("Husband"):

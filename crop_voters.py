@@ -2,13 +2,14 @@ import os
 import time
 from PIL import Image, ImageDraw
 
+from logger import setup_logger
+logger = setup_logger()
 
 def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
     os.makedirs(out_dir, exist_ok=True)
     img = Image.open(input_png)
 
     W, H = img.size
-    print(f"Processing image {input_png} ({W} x {H})")
 
     # DPI-invariant margins
     top_header_pct = 0.032
@@ -66,17 +67,16 @@ def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
             draw.rectangle([px_left, px_top, px_right, px_bottom], fill="white")
 
             crop.save(f"{out_dir}/{os.path.basename(input_png).replace('.png', '')}_voter_{count:02d}.png")
-            print(f"Saved {out_dir}/{os.path.basename(input_png).replace('.png', '')}_voter_{count:02d}.png")
 
             # ocr_text = extract_text_from_image(f"{out_dir}/voter_{count:02d}.png")
             # epic_id = extract_epic_id(crop, count)
             # cleaned_data = clean_with_llm(ocr_text, epic_id)
             # append_to_csv(cleaned_data)
-            # print(f"Cleaned Data for voter_{count:02d}:\n{json.dumps(cleaned_data, indent=2)}")
+            # logger.info(f"Cleaned Data for voter_{count:02d}:\n{json.dumps(cleaned_data, indent=2)}")
 
             count += 1
 
-def crop_voter_boxes(png_dir: str, crops_dir: str):
+def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None):
     """
     Crops voter boxes from each page PNG and saves them to crops_dir
     """
@@ -84,7 +84,15 @@ def crop_voter_boxes(png_dir: str, crops_dir: str):
     # Record the start time
     start_time = time.perf_counter() # Or time.time() for less precision
 
-    for file in sorted(os.listdir(png_dir)):
+    files = sorted(os.listdir(png_dir))
+    task = None
+    if progress:
+        task = progress.add_task("✂️ Cropping voter boxes", total=len(files) - 1) # -1 to .DS_Store (MacOS)
+
+    for file in files:
+        if progress:
+            progress.advance(task)
+
         if file.lower().endswith(".png"):
             input_png_path = os.path.join(png_dir, file)
             crop_voter_boxes_dynamic(input_png_path, out_dir=crops_dir)
@@ -96,4 +104,4 @@ def crop_voter_boxes(png_dir: str, crops_dir: str):
     elapsed_time = end_time - start_time
 
     # Print the elapsed time
-    print(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
+    logger.info(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
