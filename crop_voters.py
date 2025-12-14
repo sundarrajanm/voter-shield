@@ -87,13 +87,13 @@ def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None):
     files = sorted(os.listdir(png_dir))
     task = None
     if progress:
-        task = progress.add_task("✂️ Cropping voter boxes", total=len(files) - 1) # -1 to .DS_Store (MacOS)
+        task = progress.add_task("✂️ Cropping voter boxes from PNGs", total=len(files) - 1) # -1 to .DS_Store (MacOS)
 
     for file in files:
-        if progress:
-            progress.advance(task)
-
         if file.lower().endswith(".png"):
+            if progress:
+                progress.advance(task)
+
             input_png_path = os.path.join(png_dir, file)
             crop_voter_boxes_dynamic(input_png_path, out_dir=crops_dir)
 

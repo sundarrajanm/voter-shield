@@ -149,7 +149,29 @@ def extract_text_from_image(image_path: str) -> str:
     
 #     return all_results
 
-MAX_WORKERS = min(6, os.cpu_count() or 4)  # safe default for laptop
+import re
+from typing import NamedTuple
+
+class ParsedFile(NamedTuple):
+    doc_id: str
+    page_no: int
+    voter_no: int
+
+FILENAME_RE = re.compile(
+    r"^(?P<doc>.+?)_page_(?P<page>\d+)_voter_(?P<voter>\d+)\.png$",
+    re.IGNORECASE
+)
+
+def parse_filename(filename: str) -> ParsedFile | None:
+    m = FILENAME_RE.match(filename)
+    if not m:
+        return None
+
+    return ParsedFile(
+        doc_id=m.group("doc"),
+        page_no=int(m.group("page")),
+        voter_no=int(m.group("voter"))
+    )
 
 
 def _ocr_worker(file, crops_dir):
@@ -176,7 +198,7 @@ def _ocr_worker(file, crops_dir):
         }
 
 
-def extract_ocr_from_crops_in_parallel(crops_dir: str, progress=None, limit=None):
+def extract_ocr_from_crops_in_parallel(crops_dir: str, progress=None, max_workers=4, limit=None):
     """
     Performs OCR on all cropped voter images using multi-threading.
     """
@@ -193,29 +215,34 @@ def extract_ocr_from_crops_in_parallel(crops_dir: str, progress=None, limit=None
     start_time = time.perf_counter()
 
     logger.info(
-        f"🔍 Starting OCR extraction ({len(files)} crops, {MAX_WORKERS} threads)"
+        f"🔍 Starting OCR extraction ({len(files)} crops, {max_workers} threads)"
     )
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_ocr_worker, file, crops_dir): idx
-            for idx, file in enumerate(files, start=1)
+            executor.submit(_ocr_worker, file, crops_dir): file
+            for file in files
         }
 
         for future in as_completed(futures):
-            serial_no = futures[future]
+            file = futures[future]
+            result = future.result()
 
             if progress:
                 progress.advance(task)
 
-            result = future.result()
+            if not result["ocr_text"].strip():
+                continue
 
-            if result["ocr_text"].strip():
-                result["serial_no"] = serial_no
-                results.append(result)
+            parsed = parse_filename(file)
+            if not parsed:
+                continue
 
-    # Preserve deterministic order (important!)
-    results.sort(key=lambda x: x["serial_no"])
+            result["doc_id"] = parsed.doc_id
+            result["page_no"] = parsed.page_no
+            result["voter_no"] = parsed.voter_no
+
+            results.append(result)
 
     # Persist debug output
     with open("ocr/ocr_results.json", "w", encoding="utf-8") as f:
@@ -229,3 +256,30 @@ def extract_ocr_from_crops_in_parallel(crops_dir: str, progress=None, limit=None
     )
 
     return results
+
+from collections import defaultdict
+
+def assign_serial_numbers(results: list[dict]) -> list[dict]:
+    """
+    Assigns serial_no resetting per doc_id.
+    """
+
+    # Group by doc_id
+    grouped = defaultdict(list)
+    for r in results:
+        grouped[r["doc_id"]].append(r)
+
+    final = []
+
+    for doc_id, voters in grouped.items():
+        # Sort deterministically inside doc
+        voters.sort(key=lambda x: (x["page_no"], x["voter_no"]))
+
+        # Assign serial_no
+        for idx, voter in enumerate(voters, start=1):
+            voter["serial_no"] = idx
+            final.append(voter)
+
+    # Optional: global stable ordering
+    final.sort(key=lambda x: (x["doc_id"], x["serial_no"]))
+    return final
