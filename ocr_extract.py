@@ -3,6 +3,31 @@ from PIL import Image, ImageDraw
 import os
 import pytesseract
 
+def extract_epic_id(crop):
+    cw, ch = crop.size
+
+    # Crop the entire right 40%
+    x1 = int(cw * 0.60)   # left boundary for EPIC region
+    x2 = cw               # till the rightmost edge
+    y1 = 0
+    y2 = ch
+
+    epic_region = crop.crop((x1, y1, x2, y2))
+
+    # Run OCR
+    epic_text = pytesseract.image_to_string(
+        epic_region,
+        lang="eng",
+        config=(
+            "--psm 7 --oem 1 "
+            "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        )
+    ).strip()
+
+    # Clean output to allow only alphanumeric
+    epic_text = "".join(c for c in epic_text if c.isalnum())
+
+    return epic_text
 
 def extract_text_from_image(image_path: str) -> str:
     img = Image.open(image_path)
@@ -10,7 +35,7 @@ def extract_text_from_image(image_path: str) -> str:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     return "\n".join(lines)
 
-def extract_ocr_from_crops(crops_dir: str):
+def extract_ocr_from_crops(crops_dir: str, limit=None):
     """
     Performs OCR on all cropped voter images.
 
@@ -28,18 +53,27 @@ def extract_ocr_from_crops(crops_dir: str):
     # Record the start time
     start_time = time.perf_counter() # Or time.time() for less precision
 
+    serial_no = 1
     for file in sorted(os.listdir(crops_dir)):
         if file.lower().endswith(".png"):
             print(f"🔍 OCR processing: {file}")
             path = os.path.join(crops_dir, file)
 
             ocr_text = extract_text_from_image(path)
+            epic_id = extract_epic_id(Image.open(path))
             print(f"📄 OCR extracted {len(ocr_text.splitlines())} non-empty lines.")
 
-            results.append({
-                "source_image": file,
-                "ocr_text": ocr_text,
-            })
+            if limit is not None and serial_no > limit:
+                break
+
+            if ocr_text.strip() != "":
+                results.append({
+                    "source_image": file,
+                    "ocr_text": ocr_text,
+                    "epic_id": epic_id,
+                    "serial_no": serial_no,
+                })
+            serial_no += 1
 
     # Write results to ocr_results.json for inspection
     import json
@@ -51,6 +85,8 @@ def extract_ocr_from_crops(crops_dir: str):
 
     # Calculate the elapsed time
     elapsed_time = end_time - start_time
+
+    print("Total number of OCR results:", len(results))
     
     print(f"Time taken by extract_ocr_from_crops: {elapsed_time:.3f} seconds.")
     return results

@@ -25,35 +25,22 @@ def main():
     # print("\n✂️ Step 2: Cropping voter boxes")
     # crop_voter_boxes(PNG_DIR, CROPS_DIR)
 
-    # # 3️⃣ OCR extraction
-    # print("\n🔍 Step 3: OCR extraction")
-    # ocr_results = extract_ocr_from_crops(CROPS_DIR)
-
-    # # 3️⃣ OCR extraction
+    # 3️⃣ OCR extraction
     print("\n🔍 Step 3: OCR extraction")
-    ocr_results = extract_ocr_from_png(PNG_DIR, 50)
+    ocr_results = extract_ocr_from_crops(CROPS_DIR)
 
     # 4️⃣ CSV extraction
     print("\n🧠 Step 4: CSV extraction")
+    import json
+    with open("ocr/ocr_results.json", "r", encoding="utf-8") as f:
+        ocr_results = json.load(f)
     cleaned_records = clean_and_extract_csv(ocr_results)
     
-    # Write cleaned records to CSV
-    write_final_csv(cleaned_records, CSV_DIR)
-
-    # # Merge source_image back
-    # for rec, meta in zip(cleaned_records, ocr_results):
-    #     rec["source_image"] = meta["source_image"]
-
-    # # 5️⃣ Serial number assignment
-    # print("\n🔢 Step 5: Assigning serial numbers")
-    # final_records = assign_serial_numbers(cleaned_records)
-
     # # 6️⃣ Write CSV
+    write_final_csv(cleaned_records, CSV_DIR)
     # print("\n📊 Step 6: Writing final CSV")
-    # write_final_csv(final_records, CSV_DIR)
 
     print("\n🎉 Pipeline completed successfully!")
-
 
 if __name__ == "__main__":
     main()

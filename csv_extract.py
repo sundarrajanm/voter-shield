@@ -2,7 +2,7 @@ import os
 import time
 import re
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 def remove_unwanted_words(ocr_text, noise_words):
     cleaned = ocr_text
@@ -250,74 +250,170 @@ def parse_ocr_text(ocr_text: str) -> List[Dict]:
 
 #     return cleaned_records
 
+# def clean_and_extract_csv(ocr_results):
+#     start_time = time.perf_counter()
+
+#     os.makedirs("ocr/cleaned_before", exist_ok=True)
+#     os.makedirs("ocr/parsed_after", exist_ok=True)
+
+#     all_voters = []
+
+#     noise_words = ["Photo", "Available"]
+
+#     corrections = {
+#         "Narne": "Name",
+#         "Narme": "Name",
+#         "Famale": "Female",
+#         "Gander": "Gender"
+#     }
+
+#     noise_lines_contains = [
+#         "Assembly Constituency No and Name",
+#         "Section No and Name",
+#         "Date of Publication"
+#     ]
+
+#     for item in ocr_results:
+#         source_image = item["source_image"]
+#         ocr_text = item["ocr_text"]
+
+#         # 1️⃣ Clean OCR text
+#         text = remove_unwanted_words(ocr_text, noise_words)
+#         text = replace_noise_words_with_corrections(text, corrections)
+#         text = remove_unwanted_lines_containing(text, noise_lines_contains)
+#         text = remove_epic_id_noise(text)
+
+#         # 2️⃣ Dump cleaned OCR (before parsing)
+#         cleaned_path = f"ocr/cleaned_before/{source_image}.json"
+#         with open(cleaned_path, "w", encoding="utf-8") as f:
+#             json.dump(
+#                 {
+#                     "source_image": source_image,
+#                     "cleaned_ocr_text": text
+#                 },
+#                 f,
+#                 ensure_ascii=False,
+#                 indent=2
+#             )
+
+#         # 3️⃣ Parse voters from this page
+#         try:
+#             voters = parse_ocr_text(text)
+#         except Exception as e:
+#             print(f"❌ Parsing failed for {source_image}: {e}")
+#             voters = []
+
+#         # 4️⃣ Attach source_image to every voter
+#         for v in voters:
+#             v["source_image"] = source_image
+            
+#             FIELDS = ["name", "father_name", "mother_name", "husband_name", "other_name"]
+#             if any(v.get(f) not in (None, "", " ") for f in FIELDS):
+#                 all_voters.append(v)
+
+#         # 5️⃣ Dump parsed voters for this page
+#         parsed_path = f"ocr/parsed_after/{source_image}.json"
+#         with open(parsed_path, "w", encoding="utf-8") as f:
+#             json.dump(voters, f, ensure_ascii=False, indent=2)
+
+#     end_time = time.perf_counter()
+#     print(f"⏱️ clean_and_extract_csv completed in {end_time - start_time:.3f} sec")
+#     print(f"📊 Total voters extracted: {len(all_voters)}")
+
+#     return all_voters
+
 def clean_and_extract_csv(ocr_results):
     start_time = time.perf_counter()
 
-    os.makedirs("ocr/cleaned_before", exist_ok=True)
-    os.makedirs("ocr/parsed_after", exist_ok=True)
-
     all_voters = []
+    for item in ocr_results:
+        source_image = item["source_image"]
+        ocr_text = item["ocr_text"]
 
-    noise_words = ["Photo", "Available"]
+        voter = parse_single_voter_ocr(ocr_text)
+        voter["epic_id"] = item.get("epic_id")
+        voter["serial_no"] = item.get("serial_no")
+        voter["source_image"] = source_image
+        all_voters.append(voter)
 
+    end_time = time.perf_counter()
+
+    print(f"⏱️ clean_and_extract_csv completed in {end_time - start_time:.3f} sec")
+    print(f"📊 Total voters extracted: {len(all_voters)}")
+
+    return all_voters
+
+def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
+    """
+    Parse OCR text of a SINGLE voter box into structured fields.
+    """
+
+    result = {
+        "name": None,
+        "father_name": None,
+        "husband_name": None,
+        "other_name": None,
+        "house_no": None,
+        "age": None,
+        "gender": None,
+    }
+
+    # Replace common OCR misreads with corrections
     corrections = {
         "Narne": "Name",
         "Narme": "Name",
         "Famale": "Female",
         "Gander": "Gender"
     }
+    ocr_text = replace_noise_words_with_corrections(ocr_text, corrections)
 
-    noise_lines_contains = [
-        "Assembly Constituency No and Name",
-        "Section No and Name",
-        "Date of Publication"
-    ]
+    if not ocr_text or "Name" not in ocr_text:
+        return result
 
-    for item in ocr_results:
-        source_image = item["source_image"]
-        ocr_text = item["ocr_text"]
+    # 1️⃣ Remove noise BEFORE first 'Name'
+    ocr_text = ocr_text[ocr_text.find("Name"):]
 
-        # 1️⃣ Clean OCR text
-        text = remove_unwanted_words(ocr_text, noise_words)
-        text = replace_noise_words_with_corrections(text, corrections)
-        text = remove_unwanted_lines_containing(text, noise_lines_contains)
-        text = remove_epic_id_noise(text)
+    lines = [l.strip() for l in ocr_text.splitlines() if l.strip()]
 
-        # 2️⃣ Dump cleaned OCR (before parsing)
-        cleaned_path = f"ocr/cleaned_before/{source_image}.json"
-        with open(cleaned_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "source_image": source_image,
-                    "cleaned_ocr_text": text
-                },
-                f,
-                ensure_ascii=False,
-                indent=2
-            )
+    for line in lines:
+        # --- NAME ---
+        if line.startswith("Name"):
+            m = re.search(r"Name\s*[:=]\s*(.+)", line)
+            if m:
+                result["name"] = m.group(1).strip()
 
-        # 3️⃣ Parse voters from this page
-        try:
-            voters = parse_ocr_text(text)
-        except Exception as e:
-            print(f"❌ Parsing failed for {source_image}: {e}")
-            voters = []
+        # --- FATHER ---
+        elif line.startswith("Father"):
+            m = re.search(r"Father\s+Name\s*[:=]\s*(.+)", line)
+            if m:
+                result["father_name"] = m.group(1).strip()
 
-        # 4️⃣ Attach source_image to every voter
-        for v in voters:
-            v["source_image"] = source_image
-            
-            FIELDS = ["name", "father_name", "mother_name", "husband_name", "other_name"]
-            if any(v.get(f) not in (None, "", " ") for f in FIELDS):
-                all_voters.append(v)
+        # --- HUSBAND ---
+        elif line.startswith("Husband"):
+            m = re.search(r"Husband\s+Name\s*[:=]\s*(.+)", line)
+            if m:
+                result["husband_name"] = m.group(1).strip()
 
-        # 5️⃣ Dump parsed voters for this page
-        parsed_path = f"ocr/parsed_after/{source_image}.json"
-        with open(parsed_path, "w", encoding="utf-8") as f:
-            json.dump(voters, f, ensure_ascii=False, indent=2)
+        # --- OTHER ---
+        elif line.startswith("Other"):
+            m = re.search(r"Other\s*[:=]\s*(.+)", line)
+            if m:
+                result["other_name"] = m.group(1).strip()
 
-    end_time = time.perf_counter()
-    print(f"⏱️ clean_and_extract_csv completed in {end_time - start_time:.3f} sec")
-    print(f"📊 Total voters extracted: {len(all_voters)}")
+        # --- HOUSE NUMBER ---
+        elif "House Number" in line:
+            m = re.search(r"House\s+Number\s*[:=]\s*([A-Za-z0-9/]+)", line)
+            if m:
+                result["house_no"] = m.group(1)
 
-    return all_voters
+        # --- AGE + GENDER ---
+        elif "Age" in line and "Gender" in line:
+            age_m = re.search(r"Age\s*[:+]\s*(\d+)", line)
+            gender_m = re.search(r"Gender\s*[:+]\s*(Male|Female)", line, re.I)
+
+            if age_m:
+                result["age"] = int(age_m.group(1))
+            if gender_m:
+                result["gender"] = gender_m.group(1)[0].upper()  # M / F
+
+    return result

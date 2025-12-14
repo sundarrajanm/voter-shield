@@ -23,13 +23,7 @@ def write_final_csv(cleaned_records, CSV_DIR):
         "other_name",
         "house_no",
         "age",
-        "gender",
-        "section_no",
-        "section_name",
-        "cluster_id",
-        "suspicious",
-        "reason",
-        "source_image"
+        "gender"
     ]
 
     fieldnames = [f for f in preferred_order if f in all_fieldnames] + \
@@ -45,4 +39,4 @@ def write_final_csv(cleaned_records, CSV_DIR):
         for record in cleaned_records:
             writer.writerow(record)
 
-    print(f"✅ Final CSV written to {csv_path}")
+    print(f"✅ Final CSV (voters: {len(cleaned_records)}) written to {csv_path}")
