@@ -1,9 +1,10 @@
 # main.py
 
+import argparse
 import os
 import time
 from config import (
-    PDF_DIR, PNG_DIR, CROPS_DIR, CSV_DIR, DPI
+    PDF_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR, DPI
 )
 
 from pdf_to_png import convert_pdfs_to_png
@@ -20,45 +21,68 @@ from rich.console import Console
 logger = setup_logger()
 console = Console()
 
-max_workers=6
+max_workers=4
 
 def main():
     logger.info("🛡️ VoterShield Pipeline Started")
 
     progress = get_progress()
 
-    # Delete files in PNG_DIR, CROPS_DIR, CSV_DIR before starting the pipeline
-    for dir_path in [PNG_DIR, CROPS_DIR, CSV_DIR]:
-        if os.path.exists(dir_path):
-            for file in os.listdir(dir_path):
-                file_path = os.path.join(dir_path, file)
-                try:
-                    if os.path.isfile(file_path):
-                        os.remove(file_path)
-                except Exception as e:
-                    logger.error(f"❌ Error deleting file {file_path}: {e}")
+    # Delete files based on command line argument --delete-old
+    parser = argparse.ArgumentParser(description="VoterShield Pipeline")
+    parser.add_argument("--delete-old", action="store_true", help="Delete old files before starting the pipeline")
+    args = parser.parse_args()
+
+    DELETE_OLD_FILES = args.delete_old
+    if DELETE_OLD_FILES:
+        for dir_path in [PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR]:
+            if os.path.exists(dir_path):
+                for file in os.listdir(dir_path):
+                    file_path = os.path.join(dir_path, file)
+                    try:
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                    except Exception as e:
+                        logger.error(f"❌ Error deleting file {file_path}: {e}")
 
     # Record the start time
     start_time = time.perf_counter() # Or time.time() for less precision
 
     with progress:
         # 1️⃣ PDF → PNG
-        convert_pdfs_to_png(PDF_DIR, PNG_DIR, DPI, progress=progress, max_workers=max_workers)
+        convert_pdfs_to_png(
+            PDF_DIR,
+            PNG_DIR,
+            DPI,
+            progress=progress,
+            max_workers=max_workers,
+            limit=None
+        )
         logger.info("✅ PDFs conversion completed")
 
         # 2️⃣ Crop voter boxes
-        crop_voter_boxes(PNG_DIR, CROPS_DIR, progress=progress)
+        crop_voter_boxes(
+            PNG_DIR,
+            CROPS_DIR,
+            progress=progress,
+            limit=None
+        )
         logger.info("✅ Cropping completed")
 
         # 3️⃣ OCR extraction
         ocr_results = extract_ocr_from_crops_in_parallel(
             CROPS_DIR,
             progress=progress,
-            max_workers=max_workers
+            max_workers=max_workers,
+            limit=None
         )
         logger.info(f"📊 OCR completed — {len(ocr_results)} blocks")
 
         # 4️⃣ Assign serial numbers
+        # read ocr_results from OCR_DIR/ocr_results.json
+        import json
+        with open(os.path.join(OCR_DIR, "ocr_results.json"), "r", encoding="utf-8") as f:
+            ocr_results = json.load(f)
         ocr_results = assign_serial_numbers(ocr_results)
         logger.info("🔢 Serial numbers assigned")
 

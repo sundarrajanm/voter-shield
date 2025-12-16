@@ -14,6 +14,9 @@ def write_final_csv(cleaned_records, CSV_DIR):
         all_fieldnames.update(record.keys())
 
     preferred_order = [
+        "assembly",
+        "part_no",
+        "street",
         "serial_no",
         "epic_id",
         "name",
@@ -26,8 +29,16 @@ def write_final_csv(cleaned_records, CSV_DIR):
         "gender"
     ]
 
+    filtered_columns = [
+        "source_image",
+        "ocr_text",
+        "doc_id",
+        "page_no",
+        "voter_no"
+    ]
+
     fieldnames = [f for f in preferred_order if f in all_fieldnames] + \
-                [f for f in all_fieldnames if f not in preferred_order]
+                [f for f in all_fieldnames if f not in preferred_order and f not in filtered_columns]
 
     with open(csv_path, mode="w", newline="", encoding="utf-8") as csvfile:
         writer = csv.DictWriter(

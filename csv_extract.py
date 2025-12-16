@@ -336,13 +336,8 @@ def clean_and_extract_csv(ocr_results, progress=None):
         if progress:
             progress.advance(task)
 
-        source_image = item["source_image"]
-        ocr_text = item["ocr_text"]
-
-        voter = parse_single_voter_ocr(ocr_text)
-        voter["epic_id"] = item.get("epic_id")
-        voter["serial_no"] = item.get("serial_no")
-        voter["source_image"] = source_image
+        voter = parse_single_voter_ocr(item["ocr_text"])
+        voter.update(item)
         all_voters.append(voter)
 
     end_time = time.perf_counter()

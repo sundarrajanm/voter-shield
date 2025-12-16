@@ -1,12 +1,15 @@
 import os
 import time
 from PIL import Image, ImageDraw
+import pytesseract
 
 from logger import setup_logger
 logger = setup_logger()
 
 def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
     os.makedirs(out_dir, exist_ok=True)
+    extract_street_info(input_png)
+
     img = Image.open(input_png)
 
     W, H = img.size
@@ -76,7 +79,7 @@ def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
 
             count += 1
 
-def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None):
+def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None, limit=None):
     """
     Crops voter boxes from each page PNG and saves them to crops_dir
     """
@@ -85,6 +88,9 @@ def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None):
     start_time = time.perf_counter() # Or time.time() for less precision
 
     files = sorted(os.listdir(png_dir))
+    if limit is not None:
+        files = files[:limit]
+
     task = None
     if progress:
         task = progress.add_task("✂️ Cropping voter boxes from PNGs", total=len(files) - 1) # -1 to .DS_Store (MacOS)
@@ -105,3 +111,25 @@ def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None):
 
     # Print the elapsed time
     logger.info(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
+
+def extract_street_info(input_png):
+    """
+    Extracts street information from the top 5% area of the input page PNG using OCR.
+    """
+
+    img = Image.open(input_png)
+    W, H = img.size
+    top_area_height = int(H * 0.05)
+    top_area = img.crop((0, 0, W, top_area_height))
+
+    ocr_text = pytesseract.image_to_string(
+        top_area,
+        lang='eng',
+        config='--psm 6').strip()  # Assume a single uniform block of text
+    
+    # Write the extracted text to a file
+    street_info_file = input_png.replace('.png', '_street.txt')
+    with open(street_info_file, 'w', encoding='utf-8') as f:
+        f.write(ocr_text)
+
+    return ocr_text

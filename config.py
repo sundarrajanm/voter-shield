@@ -4,6 +4,7 @@ PDF_DIR = "pdf"
 PNG_DIR = "png"
 CROPS_DIR = "crops"
 CSV_DIR = "csv"
+OCR_DIR = "ocr"
 
 DPI = 450
 BATCH_SIZE = 15

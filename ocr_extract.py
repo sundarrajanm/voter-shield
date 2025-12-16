@@ -156,23 +156,67 @@ class ParsedFile(NamedTuple):
     doc_id: str
     page_no: int
     voter_no: int
+    assembly: str
+    part_no: int
+    street: str
 
 FILENAME_RE = re.compile(
     r"^(?P<doc>.+?)_page_(?P<page>\d+)_voter_(?P<voter>\d+)\.png$",
     re.IGNORECASE
 )
 
+import re
+from typing import Dict, Optional
+
+def parse_page_metadata(ocr_text: str) -> Dict[str, Optional[str]]:
+    result = {"assembly": None, "part_no": None, "street": None}
+    if not ocr_text:
+        return result
+
+    lines = [ln.strip() for ln in ocr_text.splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return result
+
+    line1, line2 = lines[0], lines[1]
+
+    # Assembly: between ':' and 'Part'
+    m_assembly = re.search(r"Name\s*:\s*([A-Za-z0-9\- ]+?)\s+Part", line1, re.I)
+    if m_assembly:
+        result["assembly"] = m_assembly.group(1).strip()
+
+    # Part No
+    m_part = re.search(r"Part\s*No\.?\s*[:\-]?\s*(\d+)", line1, re.I)
+    if m_part:
+        result["part_no"] = int(m_part.group(1))
+
+    # Street: keep the "1-" prefix (or any section prefix)
+    # Example: "Section No and Name 1-Karupparayan Kovil Street Ward No-9"
+    m_street = re.search(r"Section\s+No\s+and\s+Name\s*[:\-]?\s*(.+)$", line2, re.I)
+    if m_street:
+        result["street"] = m_street.group(1).strip()
+
+    return result
+
 def parse_filename(filename: str) -> ParsedFile | None:
     m = FILENAME_RE.match(filename)
     if not m:
         return None
 
+    # read a .txt file from '../png' folder and replace '_voter_xx' with empty in txt_filename
+    txt_filename = os.path.join("png", re.sub(r"_voter_\d+", "", filename).replace(".png", "_street.txt"))
+    metadata = {}
+    with open(txt_filename, "r", encoding="utf-8") as f:
+        metadata_text = f.read()
+        metadata = parse_page_metadata(metadata_text)
+    
     return ParsedFile(
         doc_id=m.group("doc"),
         page_no=int(m.group("page")),
-        voter_no=int(m.group("voter"))
+        voter_no=int(m.group("voter")),
+        assembly=metadata.get("assembly"),
+        part_no=metadata.get("part_no"),
+        street=metadata.get("street")
     )
-
 
 def _ocr_worker(file, crops_dir):
     """
@@ -239,8 +283,9 @@ def extract_ocr_from_crops_in_parallel(crops_dir: str, progress=None, max_worker
                 continue
 
             result["doc_id"] = parsed.doc_id
-            result["page_no"] = parsed.page_no
-            result["voter_no"] = parsed.voter_no
+            result["assembly"] = parsed.assembly
+            result["part_no"] = parsed.part_no
+            result["street"] = parsed.street
 
             results.append(result)
 
