@@ -330,7 +330,7 @@ def clean_and_extract_csv(ocr_results, progress=None):
     all_voters = []
     task = None
     if progress:
-        task = progress.add_task("🧠 Cleaning OCR → structured voters", total=len(ocr_results)
+        task = progress.add_task("🧠 OCR -> CSV", total=len(ocr_results)
 )
     for item in ocr_results:
         if progress:

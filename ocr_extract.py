@@ -35,9 +35,8 @@ def extract_epic_id(crop):
 
     return epic_text
 
-def extract_text_from_image(image_path: str) -> str:
-    img = Image.open(image_path)
-    text = pytesseract.image_to_string(img, lang="eng", config="--psm 6 --oem 1")
+def extract_text_from_image(crop) -> str:
+    text = pytesseract.image_to_string(crop, lang="eng", config="--psm 6 --oem 1")
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     return "\n".join(lines)
 
@@ -218,54 +217,55 @@ def parse_filename(filename: str) -> ParsedFile | None:
         street=metadata.get("street")
     )
 
-def _ocr_worker(file, crops_dir):
+def _ocr_worker(crop, crop_name: str) -> dict:
     """
     Worker function executed in a thread.
     """
     try:
-        path = os.path.join(crops_dir, file)
-
-        ocr_text = extract_text_from_image(path)
-        epic_id = extract_epic_id(Image.open(path))
+        ocr_text = extract_text_from_image(crop)
+        epic_id = extract_epic_id(crop)
 
         return {
-            "source_image": file,
+            "source_image": crop_name,
             "ocr_text": ocr_text,
             "epic_id": epic_id,
         }
     except Exception as e:
-        logger.error(f"OCR failed for {file}: {e}")
+        logger.error(f"OCR failed for {crop_name}: {e}")
         return {
-            "source_image": file,
+            "source_image": crop_name,
             "ocr_text": "",
             "epic_id": None,
         }
 
 
-def extract_ocr_from_crops_in_parallel(crops_dir: str, progress=None, max_workers=4, limit=None):
+def extract_ocr_from_crops_in_parallel(total_crops: list[dict], progress=None, max_workers=4, limit=None):
     """
     Performs OCR on all cropped voter images using multi-threading.
     """
-    files = sorted(f for f in os.listdir(crops_dir) if f.lower().endswith(".png"))
+
+    # total_crops is a list of dicts with keys: crop_name, crop
+    # sort total_crops by crop_name first
+    sorted_crops = sorted(total_crops, key=lambda x: x["crop_name"])
 
     if limit:
-        files = files[:limit]
+        sorted_crops = sorted_crops[:limit]
 
     task = None
     if progress:
-        task = progress.add_task("🔍 OCR crops", total=len(files))
+        task = progress.add_task(f"🔍 Crops -> OCR", total=len(sorted_crops))
 
     results = []
     start_time = time.perf_counter()
 
     logger.info(
-        f"🔍 Starting OCR extraction ({len(files)} crops, {max_workers} threads)"
+        f"🔍 Starting OCR extraction ({len(sorted_crops)} crops, {max_workers} threads)"
     )
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_ocr_worker, file, crops_dir): file
-            for file in files
+            executor.submit(_ocr_worker, crop["crop"], crop["crop_name"]): crop["crop_name"]
+            for crop in sorted_crops
         }
 
         for future in as_completed(futures):
@@ -278,7 +278,7 @@ def extract_ocr_from_crops_in_parallel(crops_dir: str, progress=None, max_worker
             if not result["ocr_text"].strip():
                 continue
 
-            parsed = parse_filename(file)
+            parsed = parse_filename(result["source_image"])
             if not parsed:
                 continue
 
@@ -286,6 +286,8 @@ def extract_ocr_from_crops_in_parallel(crops_dir: str, progress=None, max_worker
             result["assembly"] = parsed.assembly
             result["part_no"] = parsed.part_no
             result["street"] = parsed.street
+            result["page_no"] = parsed.page_no
+            result["voter_no"] = parsed.voter_no
 
             results.append(result)
 
@@ -316,7 +318,7 @@ def assign_serial_numbers(results: list[dict]) -> list[dict]:
 
     final = []
 
-    for doc_id, voters in grouped.items():
+    for _, voters in grouped.items():
         # Sort deterministically inside doc
         voters.sort(key=lambda x: (x["page_no"], x["voter_no"]))
 

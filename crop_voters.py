@@ -2,12 +2,13 @@ import os
 import time
 from PIL import Image, ImageDraw
 import pytesseract
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from logger import setup_logger
 logger = setup_logger()
 
-def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
-    os.makedirs(out_dir, exist_ok=True)
+def crop_voter_boxes_dynamic(input_png):
+    # os.makedirs(out_dir, exist_ok=True)
     extract_street_info(input_png)
 
     img = Image.open(input_png)
@@ -39,6 +40,7 @@ def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
     photo_y_ratio = (620 - 480) / 620  # starting point
 
     count = 1
+    crops = []
 
     for r in range(ROWS):
         for c in range(COLS):
@@ -69,7 +71,13 @@ def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
             draw = ImageDraw.Draw(crop)
             draw.rectangle([px_left, px_top, px_right, px_bottom], fill="white")
 
-            crop.save(f"{out_dir}/{os.path.basename(input_png).replace('.png', '')}_voter_{count:02d}.png")
+            # crop.save(f"{out_dir}/{os.path.basename(input_png).replace('.png', '')}_voter_{count:02d}.png")
+
+            # append crop and associated file path to crops
+            crops.append({
+                "crop_name": f"{os.path.basename(input_png).replace('.png', '')}_voter_{count:02d}.png",
+                "crop": crop
+            })
 
             # ocr_text = extract_text_from_image(f"{out_dir}/voter_{count:02d}.png")
             # epic_id = extract_epic_id(crop, count)
@@ -78,8 +86,9 @@ def crop_voter_boxes_dynamic(input_png, out_dir="crops"):
             # logger.info(f"Cleaned Data for voter_{count:02d}:\n{json.dumps(cleaned_data, indent=2)}")
 
             count += 1
+    return crops
 
-def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None, limit=None):
+def crop_voter_boxes(png_dir: str, progress=None, limit=None):
     """
     Crops voter boxes from each page PNG and saves them to crops_dir
     """
@@ -93,15 +102,16 @@ def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None, limit=None):
 
     task = None
     if progress:
-        task = progress.add_task("✂️ Cropping voter boxes from PNGs", total=len(files) - 1) # -1 to .DS_Store (MacOS)
+        task = progress.add_task(f"✂️ PNGs -> Crops", total=len(files) - 1) # -1 to .DS_Store (MacOS)
 
+    crops = []
     for file in files:
         if file.lower().endswith(".png"):
             if progress:
                 progress.advance(task)
 
             input_png_path = os.path.join(png_dir, file)
-            crop_voter_boxes_dynamic(input_png_path, out_dir=crops_dir)
+            crops.extend(crop_voter_boxes_dynamic(input_png_path))
 
     # Record the end time
     end_time = time.perf_counter() # Or time.time()
@@ -111,6 +121,7 @@ def crop_voter_boxes(png_dir: str, crops_dir: str, progress=None, limit=None):
 
     # Print the elapsed time
     logger.info(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
+    return crops
 
 def extract_street_info(input_png):
     """
@@ -133,3 +144,55 @@ def extract_street_info(input_png):
         f.write(ocr_text)
 
     return ocr_text
+
+def crop_voter_boxes_parallel(
+    png_dir: str,
+    progress=None,
+    max_workers=4,
+    limit=None
+):
+    """
+    Crops voter boxes from each page PNG using multi-threading.
+    """
+
+    start_time = time.perf_counter()
+
+    files = sorted(f for f in os.listdir(png_dir) if f.lower().endswith(".png"))
+    if limit is not None:
+        files = files[:limit]
+
+    task = None
+    if progress:
+        task = progress.add_task(
+            "✂️ PNGs → Crops",
+            total=len(files)
+        )
+
+    crops = []
+
+    def _crop_worker(file):
+        input_png_path = os.path.join(png_dir, file)
+        return crop_voter_boxes_dynamic(input_png_path)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_file = {
+            executor.submit(_crop_worker, file): file
+            for file in files
+        }
+
+        for future in as_completed(future_to_file):
+            file = future_to_file[future]
+
+            try:
+                result = future.result()
+                crops.extend(result)
+            except Exception as e:
+                logger.error(f"❌ Failed cropping {file}: {e}")
+            finally:
+                if progress and task:
+                    progress.advance(task)
+
+    elapsed_time = time.perf_counter() - start_time
+    logger.info(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
+
+    return crops

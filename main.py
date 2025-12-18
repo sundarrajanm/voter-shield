@@ -8,7 +8,7 @@ from config import (
 )
 
 from pdf_to_png import convert_pdfs_to_png
-from crop_voters import crop_voter_boxes
+from crop_voters import crop_voter_boxes_parallel
 from ocr_extract import extract_ocr_from_crops_in_parallel, assign_serial_numbers
 from csv_extract import clean_and_extract_csv
 from write_csv import write_final_csv
@@ -56,38 +56,32 @@ def main():
             DPI,
             progress=progress,
             max_workers=max_workers,
-            limit=None
+            limit=2
         )
         logger.info("✅ PDFs conversion completed")
 
         # 2️⃣ Crop voter boxes
-        crop_voter_boxes(
+        total_crops = crop_voter_boxes_parallel(
             PNG_DIR,
-            CROPS_DIR,
             progress=progress,
-            limit=None
+            max_workers=max_workers
         )
         logger.info("✅ Cropping completed")
 
         # 3️⃣ OCR extraction
         ocr_results = extract_ocr_from_crops_in_parallel(
-            CROPS_DIR,
+            total_crops,
             progress=progress,
-            max_workers=max_workers,
+            max_workers=8,
             limit=None
         )
         logger.info(f"📊 OCR completed — {len(ocr_results)} blocks")
 
+        ### Fast in-memory processing below ###        
         # 4️⃣ Assign serial numbers
-        # read ocr_results from OCR_DIR/ocr_results.json
-        import json
-        with open(os.path.join(OCR_DIR, "ocr_results.json"), "r", encoding="utf-8") as f:
-            ocr_results = json.load(f)
         ocr_results = assign_serial_numbers(ocr_results)
-        logger.info("🔢 Serial numbers assigned")
 
         # 5️⃣ CSV extraction
-        logger.info("🧠 Parsing OCR → structured voters")
         cleaned_records = clean_and_extract_csv(ocr_results, progress=progress)
         logger.info(f"📊 Extracted {len(cleaned_records)} voters")
 
