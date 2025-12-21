@@ -1,6 +1,5 @@
 .env
 .DS_Store
-pdf/
 png/
 page-csv/
 augmented_csvs/

@@ -56,7 +56,7 @@ def main():
             DPI,
             progress=progress,
             max_workers=max_workers,
-            limit=2
+            limit=1
         )
         logger.info("✅ PDFs conversion completed")
 
