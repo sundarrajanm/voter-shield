@@ -31,6 +31,8 @@ def main():
     # Delete files based on command line argument --delete-old
     parser = argparse.ArgumentParser(description="VoterShield Pipeline")
     parser.add_argument("--delete-old", action="store_true", help="Delete old files before starting the pipeline")
+    parser.add_argument("--regression", action="store_true", help="Run in regression test mode with test PDFs")
+
     args = parser.parse_args()
 
     DELETE_OLD_FILES = args.delete_old
@@ -45,13 +47,16 @@ def main():
                     except Exception as e:
                         logger.error(f"❌ Error deleting file {file_path}: {e}")
 
+    regression = args.regression
+
     # Record the start time
     start_time = time.perf_counter() # Or time.time() for less precision
 
     with progress:
         # 1️⃣ PDF → PNG
         convert_pdfs_to_png(
-            PDF_DIR,
+            # pass test folder path if in regression mode
+            PDF_DIR if not regression else "tests/fixtures",
             PNG_DIR,
             DPI,
             progress=progress,

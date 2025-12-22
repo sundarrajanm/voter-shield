@@ -337,6 +337,8 @@ def clean_and_extract_csv(ocr_results, progress=None):
             progress.advance(task)
 
         voter = parse_single_voter_ocr(item["ocr_text"])
+        # voter = parse_single_voter_ocr_multilang(item["ocr_text"])
+
         voter.update(item)
         all_voters.append(voter)
 
@@ -426,5 +428,113 @@ def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
                 result["age"] = int(age_m.group(1))
             if gender_m:
                 result["gender"] = gender_m.group(1)[0].upper()  # M / F
+
+    return result
+
+import re
+from typing import Dict, Optional
+
+import unicodedata
+
+def normalize_ocr_text(text: str) -> str:
+    """
+    Normalize OCR text to remove invisible Unicode noise
+    that breaks regex matching (especially Tamil OCR).
+    """
+    if not text:
+        return text
+
+    # Unicode normalization
+    text = unicodedata.normalize("NFKC", text)
+
+    # Remove zero-width characters
+    text = re.sub(r"[\u200B-\u200D\uFEFF]", "", text)
+
+    # Normalize spaces
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+FIELD_LABELS = {
+    "name": [
+        r"Name",
+        r"பெயர்",
+    ],
+    "father_name": [
+        r"Father\s+Name",
+        r"தந்தை\s*பெயர்",
+        r"தந்தையின்\s*பெயர்",
+    ],
+    "husband_name": [
+        r"Husband\s+Name",
+        r"கணவர்\s*பெயர்",
+    ],
+    "mother_name": [
+        r"Mother\s+Name",
+        r"தாய்\s*பெயர்",
+    ],
+    "other_name": [
+        r"Other",
+        r"மற்றவர்",
+    ],
+    "house_no": [
+        r"House\s+Number",
+        r"வீட்டு\s*எண்",
+    ],
+}
+
+
+def normalize_gender(value: str) -> str | None:
+    v = value.strip().lower()
+
+    if any(k in v for k in ["male", "m", "ஆண்"]):
+        return "M"
+    if any(k in v for k in ["female", "f", "பெண்"]):
+        return "F"
+
+    return None
+
+def parse_single_voter_ocr_multilang(ocr_text: str) -> Dict[str, Optional[str]]:
+    result = {
+        "name": None,
+        "father_name": None,
+        "husband_name": None,
+        "mother_name": None,
+        "other_name": None,
+        "house_no": None,
+        "age": None,
+        "gender": None,
+    }
+
+    if not ocr_text:
+        return result
+
+    # 🔑 CRITICAL FIX
+    ocr_text = normalize_ocr_text(ocr_text)
+
+    lines = [l.strip() for l in ocr_text.splitlines() if l.strip()]
+
+    for line in lines:
+        # --- FIELD LABELS ---
+        for field, patterns in FIELD_LABELS.items():
+            for p in patterns:
+                m = re.search(rf"{p}\s*[:=]\s*(.+)", line, re.IGNORECASE)
+                if m:
+                    result[field] = m.group(1).strip()
+                    break
+
+        # --- AGE ---
+        age_m = re.search(r"(Age|வயது)\s*[:+]\s*(\d+)", line, re.IGNORECASE)
+        if age_m:
+            result["age"] = int(age_m.group(2))
+
+        # --- GENDER ---
+        gender_m = re.search(
+            r"(Gender|பாலினம்)\s*[:+]\s*([A-Za-z\u0B80-\u0BFF]+)",
+            line,
+            re.IGNORECASE,
+        )
+        if gender_m:
+            result["gender"] = normalize_gender(gender_m.group(2))
 
     return result

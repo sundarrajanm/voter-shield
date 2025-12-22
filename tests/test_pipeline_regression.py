@@ -48,7 +48,7 @@ def test_pipeline_accuracy_regression(tmp_path):
 
     # --- Step 2: Run pipeline ---
     result = subprocess.run(
-        ["python", "main.py", "--delete-old"],
+        ["python", "main.py", "--delete-old", "--regression"],
         check=True
     )
 

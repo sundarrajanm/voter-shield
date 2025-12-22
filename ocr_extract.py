@@ -35,8 +35,8 @@ def extract_epic_id(crop):
 
     return epic_text
 
-def extract_text_from_image(crop) -> str:
-    text = pytesseract.image_to_string(crop, lang="eng", config="--psm 6 --oem 1")
+def extract_text_from_image(crop, lang="eng") -> str:
+    text = pytesseract.image_to_string(crop, lang=lang, config="--psm 6 --oem 1")
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     return "\n".join(lines)
 
@@ -217,12 +217,12 @@ def parse_filename(filename: str) -> ParsedFile | None:
         street=metadata.get("street")
     )
 
-def _ocr_worker(crop, crop_name: str) -> dict:
+def _ocr_worker(crop, crop_name: str, lang: str) -> dict:
     """
     Worker function executed in a thread.
     """
     try:
-        ocr_text = extract_text_from_image(crop)
+        ocr_text = extract_text_from_image(crop, lang=lang)
         epic_id = extract_epic_id(crop)
 
         return {
@@ -264,7 +264,7 @@ def extract_ocr_from_crops_in_parallel(total_crops: list[dict], progress=None, m
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_ocr_worker, crop["crop"], crop["crop_name"]): crop["crop_name"]
+            executor.submit(_ocr_worker, crop["crop"], crop["crop_name"], crop["lang"]): crop["crop_name"]
             for crop in sorted_crops
         }
 
