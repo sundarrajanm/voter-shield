@@ -43,6 +43,8 @@ def main():
     parser.add_argument("--batch-no",type=str,required=True,help="Batch identifier (e.g. B01, B02)")
     parser.add_argument("--pdf-files",nargs="+",required=False,help="List of PDF S3 paths for this batch")
     parser.add_argument("--delete-old",action="store_true",help="Delete old files before starting the pipeline")
+    parser.add_argument("--regression", action="store_true", help="Run in regression test mode with test PDFs")
+
     parser.add_argument(
         "--resume-from",
         dest="resume_from",
@@ -92,22 +94,22 @@ def main():
                     except Exception as e:
                         logger.error(f"❌ Error deleting file {file_path}: {e}")
 
+    regression = args.regression
+
     # Record the start time
     start_time = time.perf_counter() # Or time.time() for less precision
 
     with progress:
         # 1️⃣ PDF → PNG
-        if run_stage.get("pdf2png", True):
-            convert_pdfs_to_png(
-                PDF_DIR,
-                PNG_DIR,
-                DPI,
-                progress=progress,
-                max_workers=max_workers,
-                limit=1
-            )
-        else:
-            logger.info("⏭️ Skipping PDF -> PNG stage (resuming)")
+        convert_pdfs_to_png(
+            # pass test folder path if in regression mode
+            PDF_DIR if not regression else "tests/fixtures",
+            PNG_DIR,
+            DPI,
+            progress=progress,
+            max_workers=max_workers,
+            limit=1
+        )
         logger.info("✅ PDFs conversion completed")
 
         # 2️⃣ Crop voter boxes

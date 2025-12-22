@@ -7,6 +7,24 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from logger import setup_logger
 logger = setup_logger()
 
+def detect_ocr_language_from_filename(filename: str) -> str:
+    """
+    Detect OCR language based on PNG/PDF filename.
+
+    Returns:
+        "eng"      → for English-only OCR
+        "tam+eng"  → for Tamil + English OCR
+    """
+    fname = filename.upper()
+
+    if "-TAM-" in fname:
+        return "tam+eng"
+    elif "-ENG-" in fname:
+        return "eng"
+    else:
+        # Safe default (numbers + English labels still work)
+        return "eng"
+
 def crop_voter_boxes_dynamic(input_png):
     # os.makedirs(out_dir, exist_ok=True)
     extract_street_info(input_png)
@@ -76,7 +94,8 @@ def crop_voter_boxes_dynamic(input_png):
             # append crop and associated file path to crops
             crops.append({
                 "crop_name": f"{os.path.basename(input_png).replace('.png', '')}_voter_{count:02d}.png",
-                "crop": crop
+                "crop": crop,
+                "lang": detect_ocr_language_from_filename(input_png)
             })
 
             # ocr_text = extract_text_from_image(f"{out_dir}/voter_{count:02d}.png")

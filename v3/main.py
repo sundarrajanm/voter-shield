@@ -55,12 +55,7 @@ def main():
             PNG_DIR,
             DPI,
             progress=progress,
-<<<<<<< Updated upstream
             max_workers=max_workers,
-            limit=1
-=======
-            max_workers=max_workers
->>>>>>> Stashed changes
         )
         logger.info("✅ PDFs conversion completed")
 
