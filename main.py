@@ -23,15 +23,16 @@ logger = setup_logger()
 
 max_workers=4
 def create_folders(CONSTITUENCY_NO, BATCH_NO):
-    BASE_RUN_DIR = f"/tmp/const_{CONSTITUENCY_NO}_batch_{BATCH_NO}"
+    BASE_RUN_DIR = os.path.join("tmp", f"ac_{CONSTITUENCY_NO}_batch_{BATCH_NO}")
     PDF_DIR = os.path.join(BASE_RUN_DIR, "pdf")
     PNG_DIR = os.path.join(BASE_RUN_DIR, "png")
     CROPS_DIR = os.path.join(BASE_RUN_DIR, "crops")
     OCR_DIR = os.path.join(BASE_RUN_DIR, "ocr")
     CSV_DIR = os.path.join(BASE_RUN_DIR, "csv")
 
-for d in [PDF_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR]:
-    os.makedirs(d, exist_ok=True)
+    for d in ["tmp",BASE_RUN_DIR, PDF_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR]:
+        os.makedirs(d, exist_ok=True)
+    logger.info("Folders created Successfully")
 def main():
     logger.info("🛡️ VoterShield Pipeline Started")
 
@@ -40,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description="VoterShield Pipeline")
     parser.add_argument("--constituency-number", type=int, required=True, help="Constituency number (e.g. 145)")
     parser.add_argument("--batch-no",type=str,required=True,help="Batch identifier (e.g. B01, B02)")
-    parser.add_argument("--pdf-files",nargs="+",required=True,help="List of PDF S3 paths for this batch")
+    parser.add_argument("--pdf-files",nargs="+",required=False,help="List of PDF S3 paths for this batch")
     parser.add_argument("--delete-old",action="store_true",help="Delete old files before starting the pipeline")
     parser.add_argument(
         "--resume-from",
@@ -50,15 +51,16 @@ def main():
             "assign_serial, extract_csv, write_csv")
     )
     args = parser.parse_args()
+    logger.info(f"Request: {args}")
     CONSTITUENCY_NO = args.constituency_number
     BATCH_NO = args.batch_no
     PDF_FILES = args.pdf_files
     RESUME_FROM = args.resume_from
     DELETE_OLD_FILES = args.delete_old
 
-    logger.info(f"🏷️ Constituency={CONSTITUENCY_NO}, Batch={BATCH_NO}, PDFs={len(PDF_FILES)}")
-    create_folders(CONSTITUENCY_NO="0", BATCH_NO="0")
-    if len(PDF_FILES)>0:
+    logger.info(f"🏷️ Constituency={CONSTITUENCY_NO}, Batch={BATCH_NO}, PDFs={PDF_FILES}")
+    create_folders(CONSTITUENCY_NO, BATCH_NO)
+    if PDF_FILES is not None and len(PDF_FILES)>0:
         logger.info("⬇️ Downloading PDFs from S3")
         download_pdfs(PDF_FILES, PDF_DIR)
 
@@ -79,6 +81,7 @@ def main():
             logger.warning(f"Unknown resume stage '{RESUME_FROM}'; running full pipeline")
 
     if DELETE_OLD_FILES:
+        logger.info("Deleting the old files")
         for dir_path in [PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR]:
             if os.path.exists(dir_path):
                 for file in os.listdir(dir_path):

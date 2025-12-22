@@ -1,6 +1,5 @@
 FROM amazonlinux:2
 
-# Enable EPEL + install deps
 RUN yum update -y && \
     amazon-linux-extras install epel -y && \
     yum install -y \
