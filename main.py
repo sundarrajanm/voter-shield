@@ -23,16 +23,16 @@ logger = setup_logger()
 
 max_workers=4
 def create_folders(CONSTITUENCY_NO, BATCH_NO):
-    BASE_RUN_DIR = os.path.join("tmp", f"ac_{CONSTITUENCY_NO}_batch_{BATCH_NO}")
-    PDF_DIR = os.path.join(BASE_RUN_DIR, "pdf")
-    PNG_DIR = os.path.join(BASE_RUN_DIR, "png")
-    CROPS_DIR = os.path.join(BASE_RUN_DIR, "crops")
-    OCR_DIR = os.path.join(BASE_RUN_DIR, "ocr")
-    CSV_DIR = os.path.join(BASE_RUN_DIR, "csv")
+    base_run_dir = os.path.join("tmp", f"ac_{CONSTITUENCY_NO}_batch_{BATCH_NO}")
+    pdf_dir = os.path.join(base_run_dir, PDF_DIR)
+    png_dir = os.path.join(base_run_dir, PNG_DIR)
+    crops_dir = os.path.join(base_run_dir, CROPS_DIR)
+    ocr_dir = os.path.join(base_run_dir, OCR_DIR)
+    csv_dir = os.path.join(base_run_dir, CSV_DIR)
 
-    for d in ["tmp",BASE_RUN_DIR, PDF_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR]:
+    for d in ["tmp",base_run_dir, pdf_dir, png_dir, crops_dir, ocr_dir, csv_dir]:
         os.makedirs(d, exist_ok=True)
-    logger.info("Folders created Successfully")
+    logger.info("Folders created successfully")
 def main():
     logger.info("🛡️ VoterShield Pipeline Started")
 
