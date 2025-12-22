@@ -53,6 +53,8 @@ logger = setup_logger()
 
 from pdf2image import convert_from_path
 
+START_PAGE = 3 # skip first 2 pages
+
 def _convert_single_pdf(
     pdf_path: str,
     png_dir: str,
@@ -60,11 +62,11 @@ def _convert_single_pdf(
     progress=None
 ):
     logger.info(f"🚀 Converting {pdf_path}")
-    pages = convert_from_path(pdf_path, dpi=dpi)
+    pages = convert_from_path(pdf_path,
+                              dpi=dpi,
+                              thread_count=4, first_page=START_PAGE)
 
-    START_PAGE = 3                    # skip first 2 pages
-    END_PAGE = len(pages) - 1         # skip last page
-    total_pages = END_PAGE - START_PAGE + 1
+    total_pages = len(pages) - 1 # skip last page
 
     task_child = None
     if progress:
@@ -74,7 +76,7 @@ def _convert_single_pdf(
         )
 
     for i, page in enumerate(pages):
-        if i >= START_PAGE - 1 and i < END_PAGE:
+        if i < total_pages:
             out = os.path.join(
                 png_dir,
                 f"{os.path.basename(pdf_path).replace('.pdf', '')}_page_{i+1:02d}.png"

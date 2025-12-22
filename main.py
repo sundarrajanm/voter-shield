@@ -17,9 +17,9 @@ from logger import setup_logger
 from progress import get_progress
 
 from rich.console import Console
+console = Console(force_terminal=True)
 
 logger = setup_logger()
-console = Console()
 
 max_workers=4
 
