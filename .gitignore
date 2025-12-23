@@ -10,3 +10,5 @@ debug_*/
 __pycache__
 logs/
 trash/
+csv/*
+pdf/*
