@@ -160,7 +160,7 @@ class ParsedFile(NamedTuple):
     street: str
 
 FILENAME_RE = re.compile(
-    r"^(?P<doc>.+?)_page_(?P<page>\d+)_voter_(?P<voter>\d+)\.png$",
+    r"^(?P<doc>.+?)_page_(?P<page>\d+)_voter_(?P<voter>\d+)\.jpg$",
     re.IGNORECASE
 )
 
@@ -201,8 +201,8 @@ def parse_filename(filename: str) -> ParsedFile | None:
     if not m:
         return None
 
-    # read a .txt file from '../png' folder and replace '_voter_xx' with empty in txt_filename
-    txt_filename = os.path.join("png", re.sub(r"_voter_\d+", "", filename).replace(".png", "_street.txt"))
+    # read a .txt file from '../jpg' folder and replace '_voter_xx' with empty in txt_filename
+    txt_filename = os.path.join("jpg", re.sub(r"_voter_\d+", "", filename).replace(".jpg", "_street.txt"))
     metadata = {}
     with open(txt_filename, "r", encoding="utf-8") as f:
         metadata_text = f.read()
@@ -223,6 +223,15 @@ def _ocr_worker(crop, crop_name: str, lang: str) -> dict:
     """
     try:
         ocr_text = extract_text_from_image(crop, lang=lang)
+        
+        if not ocr_text.strip():
+            # Return empty result if OCR text is empty
+            return {
+                "source_image": crop_name,
+                "ocr_text": "",
+                "epic_id": None,
+            }
+        
         epic_id = extract_epic_id(crop)
 
         return {
@@ -280,6 +289,7 @@ def extract_ocr_from_crops_in_parallel(total_crops: list[dict], progress=None, m
 
             parsed = parse_filename(result["source_image"])
             if not parsed:
+                logger.warning(f"⚠️ Failed to parse metadata from filename {file}, skipping.")
                 continue
 
             result["doc_id"] = parsed.doc_id

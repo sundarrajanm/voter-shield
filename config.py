@@ -1,5 +1,6 @@
 # config.py
 
+JPG_DIR = "jpg"
 PDF_DIR = "pdf"
 PNG_DIR = "png"
 CROPS_DIR = "crops"

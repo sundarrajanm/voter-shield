@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw
 import pytesseract
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from config import CROPS_DIR
 from logger import setup_logger
 logger = setup_logger()
 
@@ -25,12 +26,11 @@ def detect_ocr_language_from_filename(filename: str) -> str:
         # Safe default (numbers + English labels still work)
         return "eng"
 
-def crop_voter_boxes_dynamic(input_png):
-    # os.makedirs(out_dir, exist_ok=True)
-    extract_street_info(input_png)
+def crop_voter_boxes_dynamic(input_jpg):
+    # os.makedirs(CROPS_DIR, exist_ok=True)
+    extract_street_info(input_jpg)
 
-    img = Image.open(input_png)
-
+    img = Image.open(input_jpg)
     W, H = img.size
 
     # DPI-invariant margins
@@ -89,13 +89,13 @@ def crop_voter_boxes_dynamic(input_png):
             draw = ImageDraw.Draw(crop)
             draw.rectangle([px_left, px_top, px_right, px_bottom], fill="white")
 
-            # crop.save(f"{out_dir}/{os.path.basename(input_png).replace('.png', '')}_voter_{count:02d}.png")
+            crop.save(f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_voter_{count:02d}.jpg")
 
             # append crop and associated file path to crops
             crops.append({
-                "crop_name": f"{os.path.basename(input_png).replace('.png', '')}_voter_{count:02d}.png",
+                "crop_name": f"{os.path.basename(input_jpg).replace('.jpg', '')}_voter_{count:02d}.jpg",
                 "crop": crop,
-                "lang": detect_ocr_language_from_filename(input_png)
+                "lang": detect_ocr_language_from_filename(input_jpg)
             })
 
             # ocr_text = extract_text_from_image(f"{out_dir}/voter_{count:02d}.png")
@@ -142,12 +142,12 @@ def crop_voter_boxes(png_dir: str, progress=None, limit=None):
     logger.info(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
     return crops
 
-def extract_street_info(input_png):
+def extract_street_info(input_jpg):
     """
-    Extracts street information from the top 5% area of the input page PNG using OCR.
+    Extracts street information from the top 5% area of the input page JPG using OCR.
     """
 
-    img = Image.open(input_png)
+    img = Image.open(input_jpg)
     W, H = img.size
     top_area_height = int(H * 0.05)
     top_area = img.crop((0, 0, W, top_area_height))
@@ -158,55 +158,55 @@ def extract_street_info(input_png):
         config='--psm 6').strip()  # Assume a single uniform block of text
     
     # Write the extracted text to a file
-    street_info_file = input_png.replace('.png', '_street.txt')
+    street_info_file = input_jpg.replace('.jpg', '_street.txt')
     with open(street_info_file, 'w', encoding='utf-8') as f:
         f.write(ocr_text)
 
     return ocr_text
 
 def crop_voter_boxes_parallel(
-    png_dir: str,
+    jpg_dir: str,
     progress=None,
     max_workers=4,
     limit=None
 ):
     """
-    Crops voter boxes from each page PNG using multi-threading.
+    Crops voter boxes from each page JPG using multi-threading.
     """
 
     start_time = time.perf_counter()
 
-    files = sorted(f for f in os.listdir(png_dir) if f.lower().endswith(".png"))
+    jpgs = sorted(f for f in os.listdir(jpg_dir) if f.lower().endswith(".jpg"))
     if limit is not None:
-        files = files[:limit]
+        jpgs = jpgs[:limit]
 
     task = None
     if progress:
         task = progress.add_task(
-            "✂️ PNGs → Crops",
-            total=len(files)
+            "✂️ JPGs → Crops",
+            total=len(jpgs)
         )
 
     crops = []
 
-    def _crop_worker(file):
-        input_png_path = os.path.join(png_dir, file)
-        return crop_voter_boxes_dynamic(input_png_path)
+    def _crop_worker(jpg):
+        input_jpg_path = os.path.join(jpg_dir, jpg)
+        return crop_voter_boxes_dynamic(input_jpg_path)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {
-            executor.submit(_crop_worker, file): file
-            for file in files
+            executor.submit(_crop_worker, jpg): jpg
+            for jpg in jpgs
         }
 
         for future in as_completed(future_to_file):
-            file = future_to_file[future]
+            jpg = future_to_file[future]
 
             try:
                 result = future.result()
                 crops.extend(result)
             except Exception as e:
-                logger.error(f"❌ Failed cropping {file}: {e}")
+                logger.error(f"❌ Failed cropping {jpg}: {e}")
             finally:
                 if progress and task:
                     progress.advance(task)

@@ -1,6 +1,7 @@
 .env
 .DS_Store
 png/
+jpg/
 page-csv/
 augmented_csvs/
 ocr/

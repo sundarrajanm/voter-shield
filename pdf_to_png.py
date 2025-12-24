@@ -57,14 +57,16 @@ START_PAGE = 3 # skip first 2 pages
 
 def _convert_single_pdf(
     pdf_path: str,
-    png_dir: str,
+    jpg_dir: str,
     dpi: int,
     progress=None
 ):
     logger.info(f"🚀 Converting {pdf_path}")
     pages = convert_from_path(pdf_path,
                               dpi=dpi,
-                              thread_count=4, first_page=START_PAGE)
+                              fmt="jpeg",
+                              jpegopt={"quality": 95},
+                              first_page=START_PAGE)
 
     total_pages = len(pages) - 1 # skip last page
 
@@ -78,18 +80,18 @@ def _convert_single_pdf(
     for i, page in enumerate(pages):
         if i < total_pages:
             out = os.path.join(
-                png_dir,
-                f"{os.path.basename(pdf_path).replace('.pdf', '')}_page_{i+1:02d}.png"
+                jpg_dir,
+                f"{os.path.basename(pdf_path).replace('.pdf', '')}_page_{i+1:02d}.jpg"
             )
-            page.save(out, "PNG")
+            page.save(out, "JPEG")
             if progress and task_child:
                 progress.advance(task_child)
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-def convert_pdfs_to_png(
+def convert_pdfs_to_jpg(
     pdf_dir: str,
-    png_dir: str,
+    jpg_dir: str,
     dpi: int,
     progress=None,
     max_workers=4,
@@ -97,7 +99,7 @@ def convert_pdfs_to_png(
 ):
     start_time = time.perf_counter()
 
-    os.makedirs(png_dir, exist_ok=True)
+    os.makedirs(jpg_dir, exist_ok=True)
 
     pdf_files = sorted(
         f for f in os.listdir(pdf_dir)
@@ -115,7 +117,7 @@ def convert_pdfs_to_png(
 
     if progress:
         task_parent = progress.add_task(
-            "1️⃣ Converting PDFs to PNGs",
+            "1️⃣ Converting PDFs to JPGs",
             total=len(pdf_files)
         )
     
@@ -126,7 +128,7 @@ def convert_pdfs_to_png(
             executor.submit(
                 _convert_single_pdf,
                 os.path.join(pdf_dir, file),
-                png_dir,
+                jpg_dir,
                 dpi,
                 progress
             ): file
@@ -145,4 +147,4 @@ def convert_pdfs_to_png(
         progress.update(task_parent, completed=len(pdf_files))
 
     elapsed = time.perf_counter() - start_time
-    logger.info(f"⏱️ PDF → PNG completed in {elapsed:.2f} seconds")
+    logger.info(f"⏱️ PDF → JPG completed in {elapsed:.2f} seconds")

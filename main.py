@@ -4,10 +4,10 @@ import argparse
 import os
 import time
 from config import (
-    PDF_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR, DPI
+    JPG_DIR, PDF_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR, DPI
 )
 
-from pdf_to_png import convert_pdfs_to_png
+from pdf_to_png import convert_pdfs_to_jpg
 from crop_voters import crop_voter_boxes_parallel
 from ocr_extract import extract_ocr_from_crops_in_parallel, assign_serial_numbers
 from csv_extract import clean_and_extract_csv
@@ -21,7 +21,7 @@ console = Console(force_terminal=True)
 
 logger = setup_logger()
 
-max_workers=4
+max_workers = 4
 
 def main():
     logger.info("🛡️ VoterShield Pipeline Started")
@@ -37,7 +37,7 @@ def main():
 
     DELETE_OLD_FILES = args.delete_old
     if DELETE_OLD_FILES:
-        for dir_path in [PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR]:
+        for dir_path in [JPG_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR]:
             if os.path.exists(dir_path):
                 for file in os.listdir(dir_path):
                     file_path = os.path.join(dir_path, file)
@@ -53,11 +53,11 @@ def main():
     start_time = time.perf_counter() # Or time.time() for less precision
 
     with progress:
-        # 1️⃣ PDF → PNG
-        convert_pdfs_to_png(
+        # 1️⃣ PDF → JPG
+        convert_pdfs_to_jpg(
             # pass test folder path if in regression mode
             PDF_DIR if not regression else "tests/fixtures",
-            PNG_DIR,
+            JPG_DIR,
             DPI,
             progress=progress,
             max_workers=max_workers,
@@ -67,17 +67,17 @@ def main():
 
         # 2️⃣ Crop voter boxes
         total_crops = crop_voter_boxes_parallel(
-            PNG_DIR,
+            JPG_DIR,
             progress=progress,
             max_workers=max_workers
         )
-        logger.info("✅ Cropping completed")
+        logger.info(f"✅ Cropping completed: {len(total_crops)} crops extracted")
 
         # 3️⃣ OCR extraction
         ocr_results = extract_ocr_from_crops_in_parallel(
             total_crops,
             progress=progress,
-            max_workers=8,
+            max_workers=max_workers,
             limit=None
         )
         logger.info(f"📊 OCR completed — {len(ocr_results)} blocks")
