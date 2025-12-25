@@ -20,6 +20,7 @@ Age : 68 Gender : Male Age + 57 Gender : Female Age : 41 Gender : Female
     assert voters[1]["husband_name"] == "Rangaraj -"
     assert voters[2]["father_name"] == "Rangaraj -"
 
+
 def test_other_relationship():
     text = """
 Name : Ramkumar -
@@ -31,6 +32,7 @@ Age : 52 Gender : Male
 
     assert voters[0]["other_name"] == "KARUPPAL"
     assert voters[0]["father_name"] is None
+
 
 def test_missing_lines_does_not_crash():
     text = "Name : Ram -"

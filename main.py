@@ -24,6 +24,7 @@ logger = setup_logger()
 
 max_workers = 4
 
+
 def main():
     logger.info("🛡️ VoterShield Pipeline Started")
 
@@ -31,8 +32,12 @@ def main():
 
     # Delete files based on command line argument --delete-old
     parser = argparse.ArgumentParser(description="VoterShield Pipeline")
-    parser.add_argument("--delete-old", action="store_true", help="Delete old files before starting the pipeline")
-    parser.add_argument("--regression", action="store_true", help="Run in regression test mode with test PDFs")
+    parser.add_argument(
+        "--delete-old", action="store_true", help="Delete old files before starting the pipeline"
+    )
+    parser.add_argument(
+        "--regression", action="store_true", help="Run in regression test mode with test PDFs"
+    )
 
     args = parser.parse_args()
 
@@ -51,7 +56,7 @@ def main():
     regression = args.regression
 
     # Record the start time
-    start_time = time.perf_counter() # Or time.time() for less precision
+    start_time = time.perf_counter()  # Or time.time() for less precision
 
     with progress:
         # 1️⃣ PDF → JPG
@@ -62,31 +67,25 @@ def main():
             DPI,
             progress=progress,
             max_workers=max_workers,
-            limit=1
+            limit=1,
         )
         logger.info("✅ PDFs conversion completed")
 
         # 2️⃣ Crop voter boxes
-        total_crops = crop_voter_boxes_parallel(
-            JPG_DIR,
-            progress=progress,
-            max_workers=max_workers
-        )
+        total_crops = crop_voter_boxes_parallel(JPG_DIR, progress=progress, max_workers=max_workers)
         logger.info(f"✅ Cropping completed: {len(total_crops)} crops extracted")
 
         # 3️⃣ OCR extraction
-        ocr_results = extract_voters_from_stacked_txt_files(
-            CROPS_DIR,
-            progress=progress
-        )
+        ocr_results = extract_voters_from_stacked_txt_files(CROPS_DIR, progress=progress)
         logger.info(f"📊 OCR completed — {len(ocr_results)} blocks")
 
         # 4️⃣ CSV extraction
         # Read ocr_results from ocr/ocr_results.json
         import json
+
         with open("ocr/ocr_results.json", encoding="utf-8") as f:
-                ocr_results = json.load(f)
-    
+            ocr_results = json.load(f)
+
         cleaned_records = clean_and_extract_csv_v2(ocr_results, progress=progress)
         logger.info(f"📊 Extracted {len(cleaned_records)} voters")
 
@@ -106,13 +105,14 @@ def main():
     logger.info("🎉 Pipeline completed successfully!")
 
     # Record the end time
-    end_time = time.perf_counter() # Or time.time()
+    end_time = time.perf_counter()  # Or time.time()
 
     # Calculate the elapsed time
     elapsed_time = end_time - start_time
 
     # Print the elapsed time
     logger.info(f"Total pipeline time: {elapsed_time:.3f} seconds.")
+
 
 if __name__ == "__main__":
     main()

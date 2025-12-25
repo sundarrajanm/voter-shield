@@ -8,6 +8,6 @@ echo "🎨 Running Black (format)..."
 black .
 
 echo "🧪 Running tests..."
-pytest -q
+pytest -q -v -s -ra --disable-warnings
 
 echo "✅ Quality gate passed"

@@ -11,6 +11,7 @@ from ocr_extract import extract_text_from_image
 
 logger = setup_logger()
 
+
 def detect_ocr_language_from_filename(filename: str) -> str:
     """
     Detect OCR language based on PNG/PDF filename.
@@ -40,13 +41,14 @@ def extract_epic_region(crop, epic_x_ratio=0.60, epic_y_ratio=0.25):
 
     return crop.crop((x1, y1, x2, y2))
 
+
 def relocate_epic_id_region(
     crop: Image.Image,
     epic_x_ratio: float = 0.60,
     epic_y_ratio: float = 0.25,
     bottom_empty_ratio: float = 0.30,
     padding: int = 6,
-    bg_color: str = "white"
+    bg_color: str = "white",
 ) -> Image.Image:
     """
     Extracts EPIC ID region from right side of voter crop,
@@ -58,18 +60,13 @@ def relocate_epic_id_region(
     # -------------------------------
     # 1️⃣ Extract EPIC region
     # -------------------------------
-    epic_region = extract_epic_region(crop,
-                                      epic_x_ratio=epic_x_ratio,
-                                      epic_y_ratio=epic_y_ratio)
+    epic_region = extract_epic_region(crop, epic_x_ratio=epic_x_ratio, epic_y_ratio=epic_y_ratio)
 
     epic_w, epic_h = epic_region.size
 
     # 2️⃣ Remove EPIC from right side
     draw = ImageDraw.Draw(crop)
-    draw.rectangle(
-        [int(cw * epic_x_ratio), 0, cw, int(ch * epic_y_ratio)],
-        fill=bg_color
-    )
+    draw.rectangle([int(cw * epic_x_ratio), 0, cw, int(ch * epic_y_ratio)], fill=bg_color)
 
     # 3️⃣ Compute bottom paste position
     bottom_start_y = int(ch * (1 - bottom_empty_ratio))
@@ -87,15 +84,13 @@ def relocate_epic_id_region(
 
     return crop
 
-from PIL import Image
-
 
 def append_voter_end_marker(
     crop: Image.Image,
     marker_img: Image.Image,
-    scale: float = 2.0,          # 🔥 OCR-critical tuning knob
+    scale: float = 2.0,  # 🔥 OCR-critical tuning knob
     bottom_padding_px: int = 8,  # 🔥 distance from bottom edge
-    left_padding_px: int = 8     # safe left margin
+    left_padding_px: int = 8,  # safe left margin
 ) -> Image.Image:
     """
     Appends a scaled VOTER_END marker image at bottom-left of the crop.
@@ -109,16 +104,12 @@ def append_voter_end_marker(
     new_mw = int(mw * scale)
     new_mh = int(mh * scale)
 
-    marker_resized = marker_img.resize(
-        (new_mw, new_mh),
-        Image.BICUBIC
-    )
+    marker_resized = marker_img.resize((new_mw, new_mh), Image.BICUBIC)
 
     # --- Safety check ---
     if new_mh + bottom_padding_px > ch:
         raise ValueError(
-            f"Marker too tall ({new_mh}px) for crop height ({ch}px). "
-            f"Reduce scale or padding."
+            f"Marker too tall ({new_mh}px) for crop height ({ch}px). " f"Reduce scale or padding."
         )
 
     # --- Paste position (bottom-left) ---
@@ -134,6 +125,7 @@ def append_voter_end_marker(
     out.paste(marker_resized, (paste_x, paste_y))
 
     return out
+
 
 def crop_voter_boxes_dynamic(input_jpg):
     # os.makedirs(CROPS_DIR, exist_ok=True)
@@ -190,25 +182,27 @@ def crop_voter_boxes_dynamic(input_jpg):
             pad_x = int(cw * 0.02)
             pad_y = int(ch * 0.02)
 
-            px_left   = max(0, px_left - pad_x)
-            px_top    = max(0, px_top - pad_y)
-            px_right  = min(cw, px_right + pad_x)
+            px_left = max(0, px_left - pad_x)
+            px_top = max(0, px_top - pad_y)
+            px_right = min(cw, px_right + pad_x)
             px_bottom = min(ch, px_bottom + pad_y)
 
             draw = ImageDraw.Draw(crop)
             draw.rectangle([px_left, px_top, px_right, px_bottom], fill="white")
 
             crop = relocate_epic_id_region(crop)
-            crop = append_voter_end_marker(crop,
-                                           marker_img=VOTER_END_MARKER,
-                                           scale=2.0, left_padding_px=500)
+            crop = append_voter_end_marker(
+                crop, marker_img=VOTER_END_MARKER, scale=2.0, left_padding_px=500
+            )
 
             # append crop and associated file path to crops
-            crops.append({
-                "crop_name": f"{os.path.basename(input_jpg).replace('.jpg', '')}_voter_{count:02d}.jpg",
-                "crop": crop,
-                "lang": detect_ocr_language_from_filename(input_jpg)
-            })
+            crops.append(
+                {
+                    "crop_name": f"{os.path.basename(input_jpg).replace('.jpg', '')}_voter_{count:02d}.jpg",
+                    "crop": crop,
+                    "lang": detect_ocr_language_from_filename(input_jpg),
+                }
+            )
 
             # ocr_text = extract_text_from_image(f"{out_dir}/voter_{count:02d}.png")
             # epic_id = extract_epic_id(crop, count)
@@ -219,14 +213,23 @@ def crop_voter_boxes_dynamic(input_jpg):
             count += 1
 
     stacked_image = stack_voter_crops_vertically(crops)
-    stacked_image.save(f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_crops.jpg")
+    stacked_image.save(
+        f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_crops.jpg"
+    )
 
-    stacked_ocr_text = extract_text_from_image(f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_crops.jpg")
+    stacked_ocr_text = extract_text_from_image(
+        f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_crops.jpg"
+    )
     # Save stacked OCR text to a file
-    with open(f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_ocr.txt", 'w', encoding='utf-8') as f:
+    with open(
+        f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_ocr.txt",
+        "w",
+        encoding="utf-8",
+    ) as f:
         f.write(stacked_ocr_text)
 
     return crops
+
 
 def crop_voter_boxes(png_dir: str, progress=None, limit=None):
     """
@@ -234,7 +237,7 @@ def crop_voter_boxes(png_dir: str, progress=None, limit=None):
     """
 
     # Record the start time
-    start_time = time.perf_counter() # Or time.time() for less precision
+    start_time = time.perf_counter()  # Or time.time() for less precision
 
     files = sorted(os.listdir(png_dir))
     if limit is not None:
@@ -242,7 +245,7 @@ def crop_voter_boxes(png_dir: str, progress=None, limit=None):
 
     task = None
     if progress:
-        task = progress.add_task("✂️ PNGs -> Crops", total=len(files) - 1) # -1 to .DS_Store (MacOS)
+        task = progress.add_task("✂️ PNGs -> Crops", total=len(files) - 1)  # -1 to .DS_Store (MacOS)
 
     crops = []
     for file in files:
@@ -254,7 +257,7 @@ def crop_voter_boxes(png_dir: str, progress=None, limit=None):
             crops.extend(crop_voter_boxes_dynamic(input_png_path))
 
     # Record the end time
-    end_time = time.perf_counter() # Or time.time()
+    end_time = time.perf_counter()  # Or time.time()
 
     # Calculate the elapsed time
     elapsed_time = end_time - start_time
@@ -262,6 +265,7 @@ def crop_voter_boxes(png_dir: str, progress=None, limit=None):
     # Print the elapsed time
     logger.info(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
     return crops
+
 
 def extract_street_info(input_jpg):
     """
@@ -274,23 +278,18 @@ def extract_street_info(input_jpg):
     top_area = img.crop((0, 0, W, top_area_height))
 
     ocr_text = pytesseract.image_to_string(
-        top_area,
-        lang='eng',
-        config='--psm 6').strip()  # Assume a single uniform block of text
-    
+        top_area, lang="eng", config="--psm 6"
+    ).strip()  # Assume a single uniform block of text
+
     # Write the extracted text to a file
-    street_info_file = input_jpg.replace('.jpg', '_street.txt')
-    with open(street_info_file, 'w', encoding='utf-8') as f:
+    street_info_file = input_jpg.replace(".jpg", "_street.txt")
+    with open(street_info_file, "w", encoding="utf-8") as f:
         f.write(ocr_text)
 
     return ocr_text
 
-def crop_voter_boxes_parallel(
-    jpg_dir: str,
-    progress=None,
-    max_workers=4,
-    limit=None
-):
+
+def crop_voter_boxes_parallel(jpg_dir: str, progress=None, max_workers=4, limit=None):
     """
     Crops voter boxes from each page JPG using multi-threading.
     """
@@ -303,10 +302,7 @@ def crop_voter_boxes_parallel(
 
     task = None
     if progress:
-        task = progress.add_task(
-            "✂️ JPGs → Crops",
-            total=len(jpgs)
-        )
+        task = progress.add_task("✂️ JPGs → Crops", total=len(jpgs))
 
     crops = []
 
@@ -315,10 +311,7 @@ def crop_voter_boxes_parallel(
         return crop_voter_boxes_dynamic(input_jpg_path)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_file = {
-            executor.submit(_crop_worker, jpg): jpg
-            for jpg in jpgs
-        }
+        future_to_file = {executor.submit(_crop_worker, jpg): jpg for jpg in jpgs}
 
         for future in as_completed(future_to_file):
             jpg = future_to_file[future]
@@ -337,10 +330,9 @@ def crop_voter_boxes_parallel(
 
     return crops
 
+
 def stack_voter_crops_vertically(
-    crops: list[dict],
-    padding: int = 10,
-    bg_color: str = "white"
+    crops: list[dict], padding: int = 10, bg_color: str = "white"
 ) -> Image.Image:
     """
     Vertically stack voter crops into a single column image.

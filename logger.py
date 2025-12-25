@@ -11,8 +11,10 @@ LOG_DIR.mkdir(exist_ok=True)
 
 LOG_FILE = LOG_DIR / "votershield.log"
 
+
 def isDebugMode():
     return LOG_LEVEL == logging.DEBUG
+
 
 def setup_logger():
     logger = logging.getLogger("votershield")
@@ -21,10 +23,7 @@ def setup_logger():
 
     # --- Console (Rich) handler ---
     console_handler = RichHandler(
-        rich_tracebacks=True,
-        show_time=True,
-        show_level=True,
-        show_path=False
+        rich_tracebacks=True, show_time=True, show_level=True, show_path=False
     )
     console_handler.setLevel(LOG_LEVEL)
 
@@ -32,8 +31,7 @@ def setup_logger():
     file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
     file_handler.setLevel(LOG_LEVEL)
     file_formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
     file_handler.setFormatter(file_formatter)
 

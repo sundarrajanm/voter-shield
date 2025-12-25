@@ -27,25 +27,18 @@ def write_final_csv(cleaned_records, CSV_DIR):
         "other_name",
         "house_no",
         "age",
-        "gender"
+        "gender",
     ]
 
-    filtered_columns = [
-        "source_image",
-        "ocr_text",
-        "doc_id",
-        "page_no",
-        "voter_no"
-    ]
+    filtered_columns = ["source_image", "ocr_text", "doc_id", "page_no", "voter_no"]
 
-    fieldnames = [f for f in preferred_order if f in all_fieldnames] + \
-                [f for f in all_fieldnames if f not in preferred_order and f not in filtered_columns]
+    fieldnames = [f for f in preferred_order if f in all_fieldnames] + [
+        f for f in all_fieldnames if f not in preferred_order and f not in filtered_columns
+    ]
 
     with open(csv_path, mode="w", newline="", encoding="utf-8") as csvfile:
         writer = csv.DictWriter(
-            csvfile,
-            fieldnames=fieldnames,
-            extrasaction="ignore"  # optional safety
+            csvfile, fieldnames=fieldnames, extrasaction="ignore"  # optional safety
         )
         writer.writeheader()
         for record in cleaned_records:

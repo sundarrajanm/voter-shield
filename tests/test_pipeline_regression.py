@@ -12,10 +12,12 @@ INPUT_PDF = FIXTURES / "2025-EROLLGEN-S22-116-FinalRoll-Revision1-ENG-244-WI.pdf
 EXPECTED_CSV = FIXTURES / "expected_final_voter_data.csv"
 GENERATED_CSV = ROOT / "csv" / "final_voter_data.csv"
 
+
 def read_csv_as_list(path):
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         return list(reader)
+
 
 def normalize_rows(rows):
     """
@@ -25,11 +27,11 @@ def normalize_rows(rows):
     """
     normalized = []
     for row in rows:
-        normalized.append({
-            k: (v.strip() if isinstance(v, str) else v)
-            for k, v in sorted(row.items())
-        })
+        normalized.append(
+            {k: (v.strip() if isinstance(v, str) else v) for k, v in sorted(row.items())}
+        )
     return normalized
+
 
 def dict_field_diff(expected: dict, actual: dict):
     """
@@ -48,6 +50,7 @@ def dict_field_diff(expected: dict, actual: dict):
 
     return diffs
 
+
 @pytest.mark.regression
 def test_pipeline_accuracy_regression(tmp_path):
     """
@@ -61,10 +64,7 @@ def test_pipeline_accuracy_regression(tmp_path):
         GENERATED_CSV.unlink()
 
     # --- Step 2: Run pipeline ---
-    result = subprocess.run(
-        ["python", "main.py", "--delete-old", "--regression"],
-        check=True
-    )
+    result = subprocess.run(["python", "main.py", "--delete-old", "--regression"], check=True)
 
     assert result.returncode == 0, f"Pipeline failed:\n{result.stderr}"
 
@@ -75,9 +75,9 @@ def test_pipeline_accuracy_regression(tmp_path):
     actual_rows = read_csv_as_list(GENERATED_CSV)
 
     # --- Step 4: Compare row count ---
-    assert len(actual_rows) == len(expected_rows), (
-        f"Row count mismatch: expected {len(expected_rows)}, got {len(actual_rows)}"
-    )
+    assert len(actual_rows) == len(
+        expected_rows
+    ), f"Row count mismatch: expected {len(expected_rows)}, got {len(actual_rows)}"
 
     # --- Step 5: Compare content (field-level diff) ---
     failures = []
@@ -90,9 +90,7 @@ def test_pipeline_accuracy_regression(tmp_path):
             msg_lines = [f"Row {i} mismatch:"]
             for field, ev, av in field_diffs:
                 field_counter[field] += 1
-                msg_lines.append(
-                    f"  {field:<12} expected={repr(ev)}  actual={repr(av)}"
-                )
+                msg_lines.append(f"  {field:<12} expected={repr(ev)}  actual={repr(av)}")
 
             failures.append("\n".join(msg_lines))
 

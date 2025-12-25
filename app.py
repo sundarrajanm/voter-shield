@@ -9,6 +9,7 @@ st.title("🛡️ VoterShield — Basic View")
 
 FOLDER = "./csv"
 
+
 @st.cache_data
 def load_all_csvs(folder):
     all_rows = []
@@ -25,6 +26,7 @@ def load_all_csvs(folder):
 
     combined = pd.concat(all_rows, ignore_index=True)
     return combined
+
 
 df = load_all_csvs(FOLDER)
 
@@ -98,15 +100,17 @@ filtered_df = df.copy()
 # 🎨 STYLING
 # ------------------------------------------------------------------
 
+
 def highlight_missing(val):
     if pd.isna(val) or val == "" or val == "null":
         return "background-color: #ECECEC"
     return ""
 
+
 def highlight_suspicious(row):
     if row["suspicious"]:
-        return ['background-color: #FFE5B4'] * len(row)   # light peach/orange
-    return [''] * len(row)
+        return ["background-color: #FFE5B4"] * len(row)  # light peach/orange
+    return [""] * len(row)
 
 
 # Render table
@@ -129,10 +133,7 @@ st.data_editor(
     use_container_width=True,
     hide_index=True,
     column_config={
-        "age": st.column_config.NumberColumn(
-            "Age",
-            format="%d"
-        ),
+        "age": st.column_config.NumberColumn("Age", format="%d"),
         # "reasons": st.column_config.TextColumn(
         #     "Reasons",
         #     width="large"
@@ -144,7 +145,7 @@ st.data_editor(
         # "suspicious": st.column_config.CheckboxColumn(
         #     "Suspicious"
         # ),
-    }
+    },
 )
 
 st.metric("Total Voters", len(df))
