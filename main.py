@@ -22,11 +22,10 @@ console = Console(force_terminal=True)
 
 logger = setup_logger()
 
-max_workers = 4
-
+max_workers = 1
 
 def main():
-    logger.info("🛡️ VoterShield Pipeline Started")
+    logger.info(f"🛡️ VoterShield Pipeline Started using {max_workers} thread(s)")
 
     progress = get_progress()
 

@@ -7,3 +7,11 @@ check-quality:
 
 run:
 	python main.py --delete-old
+
+run-dev-docker:
+	time docker run --rm \
+		--cpus=1 \
+		--memory=4g \
+		-v .:/app \
+		votershield-calib \
+		--delete-old
