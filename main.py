@@ -1,19 +1,20 @@
 # main.py
 
 import argparse
+import logging
 import os
 import time
 from config import (
-    JPG_DIR, PDF_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR, DPI
+    DPI, PDF_DIR, JPG_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR
 )
 
 from pdf_to_png import convert_pdfs_to_jpg
 from crop_voters import crop_voter_boxes_parallel
-from ocr_extract import extract_ocr_from_crops_in_parallel, assign_serial_numbers
-from csv_extract import clean_and_extract_csv
+from ocr_extract import extract_ocr_from_crops_in_parallel, extract_voters_from_stacked_txt_files, assign_serial_numbers
+from csv_extract import clean_and_extract_csv, clean_and_extract_csv_v2
 from write_csv import write_final_csv
 
-from logger import setup_logger
+from logger import isDebugMode, setup_logger
 from progress import get_progress
 
 from rich.console import Console
@@ -74,21 +75,27 @@ def main():
         logger.info(f"✅ Cropping completed: {len(total_crops)} crops extracted")
 
         # 3️⃣ OCR extraction
-        ocr_results = extract_ocr_from_crops_in_parallel(
-            total_crops,
-            progress=progress,
-            max_workers=max_workers,
-            limit=None
+        ocr_results = extract_voters_from_stacked_txt_files(
+            CROPS_DIR,
+            progress=progress
         )
         logger.info(f"📊 OCR completed — {len(ocr_results)} blocks")
 
-        ### Fast in-memory processing below ###        
-        # 4️⃣ Assign serial numbers
-        ocr_results = assign_serial_numbers(ocr_results)
-
-        # 5️⃣ CSV extraction
-        cleaned_records = clean_and_extract_csv(ocr_results, progress=progress)
+        # 4️⃣ CSV extraction
+        # Read ocr_results from ocr/ocr_results.json
+        import json
+        with open("ocr/ocr_results.json", "r", encoding="utf-8") as f:
+                ocr_results = json.load(f)
+    
+        cleaned_records = clean_and_extract_csv_v2(ocr_results, progress=progress)
         logger.info(f"📊 Extracted {len(cleaned_records)} voters")
+
+        # 4️⃣ Assign serial numbers
+        cleaned_records = assign_serial_numbers(cleaned_records)
+
+        # Write cleaned_records to JSON for inspection
+        with open("ocr/cleaned_records.json", "w", encoding="utf-8") as f:
+            json.dump(cleaned_records, f, ensure_ascii=False, indent=2)
 
         # 5️⃣ Write CSV
         task = progress.add_task("💾 Writing final CSV", total=1)

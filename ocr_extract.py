@@ -6,7 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
 
-from logger import setup_logger
+from logger import isDebugMode, setup_logger
 logger = setup_logger()
 
 def extract_epic_id(crop):
@@ -154,13 +154,12 @@ from typing import NamedTuple
 class ParsedFile(NamedTuple):
     doc_id: str
     page_no: int
-    voter_no: int
     assembly: str
     part_no: int
     street: str
 
 FILENAME_RE = re.compile(
-    r"^(?P<doc>.+?)_page_(?P<page>\d+)_voter_(?P<voter>\d+)\.jpg$",
+    r"^(?P<doc>.+?)_page_(?P<page>\d+)_stacked_ocr.txt$",
     re.IGNORECASE
 )
 
@@ -201,8 +200,8 @@ def parse_filename(filename: str) -> ParsedFile | None:
     if not m:
         return None
 
-    # read a .txt file from '../jpg' folder and replace '_voter_xx' with empty in txt_filename
-    txt_filename = os.path.join("jpg", re.sub(r"_voter_\d+", "", filename).replace(".jpg", "_street.txt"))
+    # read the street .txt file from '../jpg' folder
+    txt_filename = os.path.join("jpg", filename.replace("stacked_ocr", "street"))
     metadata = {}
     with open(txt_filename, "r", encoding="utf-8") as f:
         metadata_text = f.read()
@@ -211,7 +210,6 @@ def parse_filename(filename: str) -> ParsedFile | None:
     return ParsedFile(
         doc_id=m.group("doc"),
         page_no=int(m.group("page")),
-        voter_no=int(m.group("voter")),
         assembly=metadata.get("assembly"),
         part_no=metadata.get("part_no"),
         street=metadata.get("street")
@@ -247,6 +245,72 @@ def _ocr_worker(crop, crop_name: str, lang: str) -> dict:
             "epic_id": None,
         }
 
+def extract_voters_from_stacked_txt_files(
+    crops_dir: str,
+    progress=None
+):
+    """
+    Extracts voter information from stacked text files corresponding to cropped images.
+    """
+
+    files = sorted(
+        f for f in os.listdir(crops_dir)
+        if f.lower().endswith(".txt")
+    )
+
+    task = None
+    if progress:
+        task = progress.add_task(f"🔍 Crops -> OCR", total=len(files))
+
+    results = []
+    start_time = time.perf_counter()
+
+    logger.info(
+        f"🔍 Starting voter extraction from stacked text files ({len(files)} crops)"
+    )
+
+    for file in files:
+        path = os.path.join(crops_dir, file)
+
+        with open(path, "r", encoding="utf-8") as f:
+            ocr_text = f.read()
+
+        if not ocr_text.strip():
+            if progress and task:
+                progress.advance(task)
+            continue
+
+        parsed = parse_filename(file)
+        if not parsed:
+            logger.warning(f"⚠️ Failed to parse metadata from filename {file}, skipping.")
+            if progress and task:
+                progress.advance(task)
+            continue
+
+        results.append({
+            "source_image": file,
+            "ocr_text": ocr_text,
+            "doc_id": parsed.doc_id,
+            "assembly": parsed.assembly,
+            "part_no": parsed.part_no,
+            "street": parsed.street,
+            "page_no": parsed.page_no,
+        })
+
+        if progress and task:
+            progress.advance(task)
+
+    with open("ocr/ocr_results.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+
+    elapsed_time = time.perf_counter() - start_time
+
+    logger.info(f"Total number of voter results: {len(results)}")
+    logger.info(
+        f"Time taken by extract_voters_from_stacked_txt_files: {elapsed_time:.3f} seconds."
+    )
+
+    return results
 
 def extract_ocr_from_crops_in_parallel(total_crops: list[dict], progress=None, max_workers=4, limit=None):
     """
@@ -301,7 +365,7 @@ def extract_ocr_from_crops_in_parallel(total_crops: list[dict], progress=None, m
 
             results.append(result)
 
-    # Persist debug output
+    # Persist debug output    
     with open("ocr/ocr_results.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
@@ -326,14 +390,19 @@ def assign_serial_numbers(results: list[dict]) -> list[dict]:
     for r in results:
         grouped[r["doc_id"]].append(r)
 
+    if isDebugMode():
+        logger.debug(f"Assigning serial numbers for {len(grouped)} documents")
+
     final = []
 
     for _, voters in grouped.items():
         # Sort deterministically inside doc
-        voters.sort(key=lambda x: (x["page_no"], x["voter_no"]))
+        voters.sort(key=lambda x: (x["page_no"]))
 
         # Assign serial_no
         for idx, voter in enumerate(voters, start=1):
+            if isDebugMode():
+                logger.debug(f"Assigning serial_no {idx} to voter from doc {voter['doc_id']} (page {voter['page_no']})")
             voter["serial_no"] = idx
             final.append(voter)
 

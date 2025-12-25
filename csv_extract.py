@@ -1,9 +1,8 @@
-import os
 import time
 import re
 import json
 from typing import List, Dict, Optional
-from logger import setup_logger
+from logger import isDebugMode, setup_logger
 logger = setup_logger()
 
 def remove_unwanted_words(ocr_text, noise_words):
@@ -324,6 +323,109 @@ def parse_ocr_text(ocr_text: str) -> List[Dict]:
 
 #     return all_voters
 
+
+import re
+from typing import List
+
+def looks_like_epic_line(line: str) -> bool:
+    cleaned = re.sub(r"[^A-Za-z0-9]", "", line)
+
+    # Relaxed rule:
+    # - at least 8 chars
+    # - alphanumeric
+    # - starts with letters (most EPICs do)
+    return bool(re.match(r"[A-Z]{2,}\d{5,}", cleaned, re.IGNORECASE))
+
+from typing import List
+
+VOTER_END_TOKEN = "VOTER_END"
+
+def split_voters_from_page_ocr(page_ocr_text: str) -> List[str]:
+    """
+    Split page-level OCR text into individual voter OCR blocks
+    using ONLY the VOTER_END token as the delimiter.
+    """
+
+    text = page_ocr_text.replace("\r", "").strip()
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+
+    voters: List[str] = []
+    buf: List[str] = []
+
+    for line in lines:
+        # Collect everything
+        if VOTER_END_TOKEN in line:
+            # remove the marker before appending
+            cleaned_line = line.replace(VOTER_END_TOKEN, "").strip()
+            if cleaned_line:
+                buf.append(cleaned_line)
+
+            voter_text = "\n".join(buf).strip()
+            if voter_text:
+                voters.append(voter_text)
+
+            buf = []  # reset buffer
+        else:
+            buf.append(line)
+
+    # ⚠️ Safety: drop trailing incomplete voter (no VOTER_END)
+    return voters
+
+# Given OCR text for a single page, parse and return list of voter dicts
+def parse_per_page_ocr_text(ocr_text: str, limit=None) -> List[Dict]:
+    voter_texts = split_voters_from_page_ocr(ocr_text)
+    voters = []
+
+    for vt in voter_texts:
+        voter = parse_single_voter_ocr(vt)
+        # voter["ocr_block"] = vt  # for debugging
+
+        if not voter["epic_id"]:
+            logger.info(f"⚠️ EPIC ID missing for voter OCR:\n{vt}\n---")
+
+        voters.append(voter)
+        if limit is not None and len(voters) >= limit:
+            break
+
+    return voters
+
+def clean_and_extract_csv_v2(ocr_results, progress=None, limit=None):
+    start_time = time.perf_counter()
+
+    all_voters = []
+    task = None
+
+    # Limit for testing
+    if limit is not None:
+        ocr_results = ocr_results[:limit]
+
+    if progress:
+        task = progress.add_task("🧠 OCR -> CSV", total=len(ocr_results))
+
+    for item in ocr_results:
+        if progress:
+            progress.advance(task)
+
+        per_page_voters = parse_per_page_ocr_text(item["ocr_text"])
+        for v in per_page_voters:
+            v.update({
+                "source_image": item["source_image"],
+                "doc_id": item.get("doc_id"),
+                "assembly": item.get("assembly"),
+                "part_no": item.get("part_no"),
+                "street": item.get("street"),
+                "page_no": item.get("page_no"),
+            })
+
+            all_voters.append(v)
+
+    end_time = time.perf_counter()
+
+    logger.info(f"⏱️ clean_and_extract_csv_v2 completed in {end_time - start_time:.3f} sec")
+    logger.info(f"📊 Total voters extracted: {len(all_voters)}")
+    
+    return all_voters
+
 def clean_and_extract_csv(ocr_results, progress=None):
     start_time = time.perf_counter()
 
@@ -351,10 +453,12 @@ def clean_and_extract_csv(ocr_results, progress=None):
 
 def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
     """
-    Parse OCR text of a SINGLE voter box into structured fields.
+    Parse OCR text of a SINGLE voter box into structured fields,
+    including EPIC ID.
     """
 
     result = {
+        "epic_id": None,
         "name": None,
         "father_name": None,
         "husband_name": None,
@@ -365,22 +469,25 @@ def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
         "gender": None,
     }
 
-    # Replace common OCR misreads with corrections
     corrections = {
         "Narne": "Name",
         "Narme": "Name",
+        "Narnme": "Name",
         "Famale": "Female",
-        "Gander": "Gender"
+        "Gander": "Gender",
     }
     ocr_text = replace_noise_words_with_corrections(ocr_text, corrections)
 
     if not ocr_text or "Name" not in ocr_text:
         return result
 
-    # 1️⃣ Remove noise BEFORE first 'Name'
+
+    # Remove noise BEFORE first 'Name'
     ocr_text = ocr_text[ocr_text.find("Name"):]
 
     lines = [l.strip() for l in ocr_text.splitlines() if l.strip()]
+
+    epic_candidates = []
 
     for line in lines:
         # --- NAME ---
@@ -415,9 +522,9 @@ def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
 
         # --- HOUSE NUMBER ---
         elif "House Number" in line:
-            m = re.search(r"House\s+Number\s*[:=]\s*([A-Za-z0-9/]+)", line)
+            m = re.search(r"House\s+Number\s*[:=]\s*([A-Za-z0-9/().,-]+)", line)
             if m:
-                result["house_no"] = m.group(1)
+                result["house_no"] = m.group(1).strip()
 
         # --- AGE + GENDER ---
         elif "Age" in line and "Gender" in line:
@@ -427,7 +534,25 @@ def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
             if age_m:
                 result["age"] = int(age_m.group(1))
             if gender_m:
-                result["gender"] = gender_m.group(1)[0].upper()  # M / F
+                result["gender"] = gender_m.group(1)[0].upper()
+
+        # --- EPIC ID CANDIDATE ---
+        else:
+            # Remove junk characters
+            cleaned = re.sub(r"[^A-Za-z0-9]", "", line)
+
+            # EPIC IDs are usually uppercase alphanumeric, length ~10
+            if (
+                cleaned
+                and cleaned.upper() == cleaned
+                and any(c.isdigit() for c in cleaned)
+                and len(cleaned) >= 8
+            ):
+                epic_candidates.append(cleaned)
+
+    # Pick the most likely EPIC (longest alphanumeric token)
+    if epic_candidates:
+        result["epic_id"] = max(epic_candidates, key=len)
 
     return result
 

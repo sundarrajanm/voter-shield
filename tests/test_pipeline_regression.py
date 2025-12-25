@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import pytest
 import difflib
+from collections import Counter
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,7 +18,6 @@ def read_csv_as_list(path):
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         return list(reader)
-
 
 def normalize_rows(rows):
     """
@@ -33,6 +33,22 @@ def normalize_rows(rows):
         })
     return normalized
 
+def dict_field_diff(expected: dict, actual: dict):
+    """
+    Return a list of (field, expected_value, actual_value)
+    only for fields that differ.
+    """
+    diffs = []
+
+    all_keys = set(expected.keys()) | set(actual.keys())
+    for key in sorted(all_keys):
+        exp_val = expected.get(key)
+        act_val = actual.get(key)
+
+        if exp_val != act_val:
+            diffs.append((key, exp_val, act_val))
+
+    return diffs
 
 @pytest.mark.regression
 def test_pipeline_accuracy_regression(tmp_path):
@@ -65,22 +81,27 @@ def test_pipeline_accuracy_regression(tmp_path):
         f"Row count mismatch: expected {len(expected_rows)}, got {len(actual_rows)}"
     )
 
-    # --- Step 5: Compare content ---
+    # --- Step 5: Compare content (field-level diff) ---
     failures = []
 
+    field_counter = Counter()
     for i, (exp, act) in enumerate(zip(expected_rows, actual_rows), start=1):
         if exp != act:
-            diff = "\n".join(
-                difflib.unified_diff(
-                    str(exp).splitlines(),
-                    str(act).splitlines(),
-                    fromfile="expected",
-                    tofile="actual",
-                    lineterm=""
+            field_diffs = dict_field_diff(exp, act)
+
+            msg_lines = [f"Row {i} mismatch:"]
+            for field, ev, av in field_diffs:
+                field_counter[field] += 1
+                msg_lines.append(
+                    f"  {field:<12} expected={repr(ev)}  actual={repr(av)}"
                 )
-            )
-            failures.append(f"Row {i} mismatch:\n{diff}")
+
+            failures.append("\n".join(msg_lines))
 
     if failures:
         print("\n\n".join(failures))
+        print("\nField-level mismatch summary:")
+        for field, count in field_counter.most_common():
+            print(f"{field}: {count}")
+
         pytest.fail(f"{len(failures)} row(s) differ from baseline")

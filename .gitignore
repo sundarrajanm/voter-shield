@@ -11,3 +11,4 @@ debug_*/
 __pycache__
 logs/
 trash/
+out.txt

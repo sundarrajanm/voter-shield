@@ -4,7 +4,9 @@ from PIL import Image, ImageDraw
 import pytesseract
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from config import CROPS_DIR
+from ocr_extract import extract_text_from_image, extract_epic_id
+
+from config import CROPS_DIR, VOTER_END_MARKER
 from logger import setup_logger
 logger = setup_logger()
 
@@ -25,6 +27,112 @@ def detect_ocr_language_from_filename(filename: str) -> str:
     else:
         # Safe default (numbers + English labels still work)
         return "eng"
+
+from PIL import Image, ImageDraw
+
+def extract_epic_region(crop, epic_x_ratio=0.60, epic_y_ratio=0.25):
+    cw, ch = crop.size
+
+    x1 = int(cw * epic_x_ratio)
+    y1 = 10
+    x2 = cw
+    y2 = int(ch * epic_y_ratio)
+
+    return crop.crop((x1, y1, x2, y2))
+
+def relocate_epic_id_region(
+    crop: Image.Image,
+    epic_x_ratio: float = 0.60,
+    epic_y_ratio: float = 0.25,
+    bottom_empty_ratio: float = 0.30,
+    padding: int = 6,
+    bg_color: str = "white"
+) -> Image.Image:
+    """
+    Extracts EPIC ID region from right side of voter crop,
+    removes it, and pastes it into bottom empty area.
+    """
+
+    cw, ch = crop.size
+
+    # -------------------------------
+    # 1️⃣ Extract EPIC region
+    # -------------------------------
+    epic_region = extract_epic_region(crop,
+                                      epic_x_ratio=epic_x_ratio,
+                                      epic_y_ratio=epic_y_ratio)
+
+    epic_w, epic_h = epic_region.size
+
+    # 2️⃣ Remove EPIC from right side
+    draw = ImageDraw.Draw(crop)
+    draw.rectangle(
+        [int(cw * epic_x_ratio), 0, cw, int(ch * epic_y_ratio)],
+        fill=bg_color
+    )
+
+    # 3️⃣ Compute bottom paste position
+    bottom_start_y = int(ch * (1 - bottom_empty_ratio))
+
+    paste_x = padding
+    paste_y = bottom_start_y + padding
+
+    # 4️⃣ Paste WITHOUT resizing (clip if overflow)
+    if paste_y + epic_h <= ch:
+        crop.paste(epic_region, (paste_x, paste_y))
+    else:
+        # Clip vertically if extreme edge case
+        visible_h = ch - paste_y
+        crop.paste(epic_region.crop((0, 0, epic_w, visible_h)), (paste_x, paste_y))
+
+    return crop
+
+from PIL import Image
+
+def append_voter_end_marker(
+    crop: Image.Image,
+    marker_img: Image.Image,
+    scale: float = 2.0,          # 🔥 OCR-critical tuning knob
+    bottom_padding_px: int = 8,  # 🔥 distance from bottom edge
+    left_padding_px: int = 8     # safe left margin
+) -> Image.Image:
+    """
+    Appends a scaled VOTER_END marker image at bottom-left of the crop.
+    Marker is resized proportionally for OCR visibility.
+    """
+
+    cw, ch = crop.size
+    mw, mh = marker_img.size
+
+    # --- Resize marker proportionally ---
+    new_mw = int(mw * scale)
+    new_mh = int(mh * scale)
+
+    marker_resized = marker_img.resize(
+        (new_mw, new_mh),
+        Image.BICUBIC
+    )
+
+    # --- Safety check ---
+    if new_mh + bottom_padding_px > ch:
+        raise ValueError(
+            f"Marker too tall ({new_mh}px) for crop height ({ch}px). "
+            f"Reduce scale or padding."
+        )
+
+    # --- Paste position (bottom-left) ---
+    paste_x = left_padding_px
+    paste_y = ch - new_mh - bottom_padding_px
+
+    # --- Work on a copy ---
+    out = crop.copy()
+
+    # --- Ensure white background for OCR contrast ---
+    bg = Image.new("RGB", (new_mw, new_mh), "white")
+    out.paste(bg, (paste_x, paste_y))
+    out.paste(marker_resized, (paste_x, paste_y))
+
+    return out
 
 def crop_voter_boxes_dynamic(input_jpg):
     # os.makedirs(CROPS_DIR, exist_ok=True)
@@ -89,7 +197,10 @@ def crop_voter_boxes_dynamic(input_jpg):
             draw = ImageDraw.Draw(crop)
             draw.rectangle([px_left, px_top, px_right, px_bottom], fill="white")
 
-            crop.save(f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_voter_{count:02d}.jpg")
+            crop = relocate_epic_id_region(crop)
+            crop = append_voter_end_marker(crop,
+                                           marker_img=VOTER_END_MARKER,
+                                           scale=2.0, left_padding_px=500)
 
             # append crop and associated file path to crops
             crops.append({
@@ -105,6 +216,15 @@ def crop_voter_boxes_dynamic(input_jpg):
             # logger.info(f"Cleaned Data for voter_{count:02d}:\n{json.dumps(cleaned_data, indent=2)}")
 
             count += 1
+
+    stacked_image = stack_voter_crops_vertically(crops)
+    stacked_image.save(f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_crops.jpg")
+
+    stacked_ocr_text = extract_text_from_image(f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_crops.jpg")
+    # Save stacked OCR text to a file
+    with open(f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_ocr.txt", 'w', encoding='utf-8') as f:
+        f.write(stacked_ocr_text)
+
     return crops
 
 def crop_voter_boxes(png_dir: str, progress=None, limit=None):
@@ -215,3 +335,48 @@ def crop_voter_boxes_parallel(
     logger.info(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
 
     return crops
+
+def stack_voter_crops_vertically(
+    crops: list[dict],
+    padding: int = 10,
+    bg_color: str = "white"
+) -> Image.Image:
+    """
+    Vertically stack voter crops into a single column image.
+
+    Args:
+        crops: list of dicts containing {"crop": PIL.Image}
+        padding: vertical spacing between voters
+        bg_color: background color
+
+    Returns:
+        PIL.Image of stacked voters
+    """
+
+    assert crops, "No crops provided"
+
+    # Extract images
+    images = [c["crop"] for c in crops]
+
+    # Normalize widths (safety)
+    max_width = max(img.width for img in images)
+
+    normalized = []
+    for img in images:
+        if img.width != max_width:
+            padded = Image.new("RGB", (max_width, img.height), bg_color)
+            padded.paste(img, (0, 0))
+            normalized.append(padded)
+        else:
+            normalized.append(img)
+
+    total_height = sum(img.height for img in normalized) + padding * (len(normalized) - 1)
+
+    stacked = Image.new("RGB", (max_width, total_height), bg_color)
+
+    y_offset = 0
+    for img in normalized:
+        stacked.paste(img, (0, y_offset))
+        y_offset += img.height + padding
+
+    return stacked

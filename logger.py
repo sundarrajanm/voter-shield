@@ -3,14 +3,19 @@ import logging
 from rich.logging import RichHandler
 from pathlib import Path
 
+from config import LOG_LEVEL
+
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
 
 LOG_FILE = LOG_DIR / "votershield.log"
 
+def isDebugMode():
+    return LOG_LEVEL == logging.DEBUG
+
 def setup_logger():
     logger = logging.getLogger("votershield")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(LOG_LEVEL)
     logger.propagate = False  # avoid duplicate logs
 
     # --- Console (Rich) handler ---
@@ -20,12 +25,11 @@ def setup_logger():
         show_level=True,
         show_path=False
     )
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(LOG_LEVEL)
 
     # --- File handler ---
     file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
-    file_handler.setLevel(logging.INFO)
-
+    file_handler.setLevel(LOG_LEVEL)
     file_formatter = logging.Formatter(
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"

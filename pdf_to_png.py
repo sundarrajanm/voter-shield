@@ -65,6 +65,7 @@ def _convert_single_pdf(
     pages = convert_from_path(pdf_path,
                               dpi=dpi,
                               fmt="jpeg",
+                              thread_count=4,
                               jpegopt={"quality": 95},
                               first_page=START_PAGE)
 
