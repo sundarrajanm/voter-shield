@@ -1,23 +1,23 @@
 # main.py
 
 import argparse
-import logging
 import os
 import time
-from config import (
-    DPI, PDF_DIR, JPG_DIR, PNG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR
-)
-
-from pdf_to_png import convert_pdfs_to_jpg
-from crop_voters import crop_voter_boxes_parallel
-from ocr_extract import extract_ocr_from_crops_in_parallel, extract_voters_from_stacked_txt_files, assign_serial_numbers
-from csv_extract import clean_and_extract_csv, clean_and_extract_csv_v2
-from write_csv import write_final_csv
-
-from logger import isDebugMode, setup_logger
-from progress import get_progress
 
 from rich.console import Console
+
+from config import CROPS_DIR, CSV_DIR, DPI, JPG_DIR, OCR_DIR, PDF_DIR, PNG_DIR
+from crop_voters import crop_voter_boxes_parallel
+from csv_extract import clean_and_extract_csv_v2
+from logger import setup_logger
+from ocr_extract import (
+    assign_serial_numbers,
+    extract_voters_from_stacked_txt_files,
+)
+from pdf_to_png import convert_pdfs_to_jpg
+from progress import get_progress
+from write_csv import write_final_csv
+
 console = Console(force_terminal=True)
 
 logger = setup_logger()
@@ -84,7 +84,7 @@ def main():
         # 4️⃣ CSV extraction
         # Read ocr_results from ocr/ocr_results.json
         import json
-        with open("ocr/ocr_results.json", "r", encoding="utf-8") as f:
+        with open("ocr/ocr_results.json", encoding="utf-8") as f:
                 ocr_results = json.load(f)
     
         cleaned_records = clean_and_extract_csv_v2(ocr_results, progress=progress)

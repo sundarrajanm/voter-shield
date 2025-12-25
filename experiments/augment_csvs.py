@@ -1,9 +1,8 @@
 import os
+
+import numpy as np
 import pandas as pd
 
-import os
-import pandas as pd
-import numpy as np
 
 def augment_csv(
         df,

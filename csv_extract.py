@@ -1,8 +1,8 @@
-import time
 import re
-import json
-from typing import List, Dict, Optional
-from logger import isDebugMode, setup_logger
+import time
+
+from logger import setup_logger
+
 logger = setup_logger()
 
 def remove_unwanted_words(ocr_text, noise_words):
@@ -148,7 +148,7 @@ def get_column_spans(name_line):
 
 #     return [v for v in normalized if any(v.values())]
 
-def parse_ocr_text(ocr_text: str) -> List[Dict]:
+def parse_ocr_text(ocr_text: str) -> list[dict]:
     voters = []
 
     # ✅ Robust row split (handles \n\n, \n \n, etc.)
@@ -324,8 +324,7 @@ def parse_ocr_text(ocr_text: str) -> List[Dict]:
 #     return all_voters
 
 
-import re
-from typing import List
+
 
 def looks_like_epic_line(line: str) -> bool:
     cleaned = re.sub(r"[^A-Za-z0-9]", "", line)
@@ -336,11 +335,10 @@ def looks_like_epic_line(line: str) -> bool:
     # - starts with letters (most EPICs do)
     return bool(re.match(r"[A-Z]{2,}\d{5,}", cleaned, re.IGNORECASE))
 
-from typing import List
 
 VOTER_END_TOKEN = "VOTER_END"
 
-def split_voters_from_page_ocr(page_ocr_text: str) -> List[str]:
+def split_voters_from_page_ocr(page_ocr_text: str) -> list[str]:
     """
     Split page-level OCR text into individual voter OCR blocks
     using ONLY the VOTER_END token as the delimiter.
@@ -349,8 +347,8 @@ def split_voters_from_page_ocr(page_ocr_text: str) -> List[str]:
     text = page_ocr_text.replace("\r", "").strip()
     lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
 
-    voters: List[str] = []
-    buf: List[str] = []
+    voters: list[str] = []
+    buf: list[str] = []
 
     for line in lines:
         # Collect everything
@@ -372,7 +370,7 @@ def split_voters_from_page_ocr(page_ocr_text: str) -> List[str]:
     return voters
 
 # Given OCR text for a single page, parse and return list of voter dicts
-def parse_per_page_ocr_text(ocr_text: str, limit=None) -> List[Dict]:
+def parse_per_page_ocr_text(ocr_text: str, limit=None) -> list[dict]:
     voter_texts = split_voters_from_page_ocr(ocr_text)
     voters = []
 
@@ -451,7 +449,7 @@ def clean_and_extract_csv(ocr_results, progress=None):
 
     return all_voters
 
-def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
+def parse_single_voter_ocr(ocr_text: str) -> dict[str, str | None]:
     """
     Parse OCR text of a SINGLE voter box into structured fields,
     including EPIC ID.
@@ -556,10 +554,8 @@ def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
 
     return result
 
-import re
-from typing import Dict, Optional
-
 import unicodedata
+
 
 def normalize_ocr_text(text: str) -> str:
     """
@@ -619,7 +615,7 @@ def normalize_gender(value: str) -> str | None:
 
     return None
 
-def parse_single_voter_ocr_multilang(ocr_text: str) -> Dict[str, Optional[str]]:
+def parse_single_voter_ocr_multilang(ocr_text: str) -> dict[str, str | None]:
     result = {
         "name": None,
         "father_name": None,

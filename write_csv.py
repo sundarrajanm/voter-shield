@@ -1,6 +1,7 @@
 import csv
 import os
 
+
 def write_final_csv(cleaned_records, CSV_DIR):
     """
     Writes the cleaned voter records to a final CSV file.

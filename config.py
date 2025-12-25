@@ -1,8 +1,8 @@
 # config.py
 
 import logging
-from PIL import Image
 
+from PIL import Image
 
 JPG_DIR = "jpg"
 PDF_DIR = "pdf"

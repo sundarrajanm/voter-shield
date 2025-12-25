@@ -1,11 +1,9 @@
-import subprocess
 import csv
-import sys
-from pathlib import Path
-import pytest
-import difflib
+import subprocess
 from collections import Counter
+from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -85,7 +83,7 @@ def test_pipeline_accuracy_regression(tmp_path):
     failures = []
 
     field_counter = Counter()
-    for i, (exp, act) in enumerate(zip(expected_rows, actual_rows), start=1):
+    for i, (exp, act) in enumerate(zip(expected_rows, actual_rows, strict=False), start=1):
         if exp != act:
             field_diffs = dict_field_diff(exp, act)
 

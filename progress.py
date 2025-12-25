@@ -1,12 +1,13 @@
 # progress.py
 from rich.progress import (
+    BarColumn,
     Progress,
     SpinnerColumn,
-    BarColumn,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
+
 
 def get_progress():
     return Progress(

@@ -1,7 +1,8 @@
 # logger.py
 import logging
-from rich.logging import RichHandler
 from pathlib import Path
+
+from rich.logging import RichHandler
 
 from config import LOG_LEVEL
 

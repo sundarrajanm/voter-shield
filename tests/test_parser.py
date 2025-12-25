@@ -1,9 +1,10 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from csv_extract import parse_ocr_text
+
 
 def test_basic_three_voters():
     text = """

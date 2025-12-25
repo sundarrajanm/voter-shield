@@ -1,13 +1,14 @@
+import os
+
+import numpy as np
 from paddleocr import PaddleOCR
 from PIL import Image
-import numpy as np
-import os
 
 # Initialize OCR (English only, no angle classification needed)
 ocr = PaddleOCR(lang="en", use_textline_orientation=False)
 
 import cv2
-import numpy as np
+
 
 def ensure_3_channel(img):
     """

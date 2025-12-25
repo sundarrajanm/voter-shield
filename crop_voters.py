@@ -1,13 +1,14 @@
 import os
 import time
-from PIL import Image, ImageDraw
-import pytesseract
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ocr_extract import extract_text_from_image, extract_epic_id
+import pytesseract
+from PIL import Image, ImageDraw
 
 from config import CROPS_DIR, VOTER_END_MARKER
 from logger import setup_logger
+from ocr_extract import extract_text_from_image
+
 logger = setup_logger()
 
 def detect_ocr_language_from_filename(filename: str) -> str:
@@ -28,7 +29,6 @@ def detect_ocr_language_from_filename(filename: str) -> str:
         # Safe default (numbers + English labels still work)
         return "eng"
 
-from PIL import Image, ImageDraw
 
 def extract_epic_region(crop, epic_x_ratio=0.60, epic_y_ratio=0.25):
     cw, ch = crop.size
@@ -88,6 +88,7 @@ def relocate_epic_id_region(
     return crop
 
 from PIL import Image
+
 
 def append_voter_end_marker(
     crop: Image.Image,
@@ -241,7 +242,7 @@ def crop_voter_boxes(png_dir: str, progress=None, limit=None):
 
     task = None
     if progress:
-        task = progress.add_task(f"✂️ PNGs -> Crops", total=len(files) - 1) # -1 to .DS_Store (MacOS)
+        task = progress.add_task("✂️ PNGs -> Crops", total=len(files) - 1) # -1 to .DS_Store (MacOS)
 
     crops = []
     for file in files:

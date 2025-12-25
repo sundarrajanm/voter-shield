@@ -1,7 +1,7 @@
-import streamlit as st
-import pandas as pd
 import os
-import numpy as np
+
+import pandas as pd
+import streamlit as st
 
 st.set_page_config(page_title="VoterShield Viewer", layout="wide")
 

@@ -1,7 +1,8 @@
+import time
+
+import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
-import time
-import pytesseract
 
 INPUT_PDF = "./pdf/2025-EROLLGEN-S22-116-FinalRoll-Revision1-ENG-244-WI.pdf"
 OUTPUT_PNG_DIR = "png"

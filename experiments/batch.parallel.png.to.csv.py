@@ -1,11 +1,11 @@
-import time
-import requests
 import json
-from PIL import Image
-import pytesseract
 import os
-
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
+import pytesseract
+import requests
+from PIL import Image
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "qwen2.5:7b-instruct" # "llama3.1:8b"   # change if needed
@@ -22,7 +22,7 @@ def llm_batch_worker(args):
     results = clean_with_llm_batch(batch_texts)
 
     # Attach source_image here
-    for r, fname in zip(results, batch_files):
+    for r, fname in zip(results, batch_files, strict=False):
         r["source_image"] = fname
 
     return results

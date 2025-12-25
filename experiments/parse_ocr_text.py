@@ -1,8 +1,8 @@
 import json
 import re
-from typing import List, Dict, Optional
 
-def parse_ocr_text(ocr_text: str) -> List[Dict]:
+
+def parse_ocr_text(ocr_text: str) -> list[dict]:
     voters = []
 
     # ✅ Robust row split (handles \n\n, \n \n, etc.)
@@ -59,7 +59,7 @@ def parse_ocr_text(ocr_text: str) -> List[Dict]:
 
     return voters
 
-def parse_column_voter_ocr(column_ocr_text: str, limit=None) -> List[Dict]:
+def parse_column_voter_ocr(column_ocr_text: str, limit=None) -> list[dict]:
     """
     Parses OCR text of a SINGLE COLUMN (up to 10 voters)
     and returns a list of structured voter dicts.
@@ -103,7 +103,7 @@ def replace_noise_words_with_corrections(ocr_text, corrections):
         cleaned = cleaned.replace(wrong, right)
     return cleaned
 
-def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
+def parse_single_voter_ocr(ocr_text: str) -> dict[str, str | None]:
     """
     Parse OCR text of a SINGLE voter box into structured fields.
     """
@@ -185,11 +185,9 @@ def parse_single_voter_ocr(ocr_text: str) -> Dict[str, Optional[str]]:
 
     return result
 
-import re
-from typing import List, Dict, Optional
 
 
-def parse_column_voter_ocr_v2(column_ocr_text: str, serial_no_start, street, part_no, assembly, age_as_on, published_on) -> List[Dict[str, Optional[str]]]:
+def parse_column_voter_ocr_v2(column_ocr_text: str, serial_no_start, street, part_no, assembly, age_as_on, published_on) -> list[dict[str, str | None]]:
     """
     Parse OCR text of a SINGLE COLUMN (up to 10 voters) into structured voter records.
     """
@@ -237,7 +235,7 @@ def parse_column_voter_ocr_v2(column_ocr_text: str, serial_no_start, street, par
     pairs = []
     token_iter = iter(tokens[1:])  # skip junk before first key
 
-    for key, value in zip(token_iter, token_iter):
+    for key, value in zip(token_iter, token_iter, strict=False):
         clean_value = value.strip()
         pairs.append((key.strip(), clean_value))
 

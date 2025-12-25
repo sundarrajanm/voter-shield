@@ -1,12 +1,12 @@
-import time
-from PIL import Image, ImageDraw
-import os
-import pytesseract
 import json
+import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from PIL import Image
+
+import pytesseract
 
 from logger import isDebugMode, setup_logger
+
 logger = setup_logger()
 
 def extract_epic_id(crop):
@@ -151,6 +151,7 @@ def extract_text_from_image(crop, lang="eng") -> str:
 import re
 from typing import NamedTuple
 
+
 class ParsedFile(NamedTuple):
     doc_id: str
     page_no: int
@@ -164,9 +165,9 @@ FILENAME_RE = re.compile(
 )
 
 import re
-from typing import Dict, Optional
 
-def parse_page_metadata(ocr_text: str) -> Dict[str, Optional[str]]:
+
+def parse_page_metadata(ocr_text: str) -> dict[str, str | None]:
     result = {"assembly": None, "part_no": None, "street": None}
     if not ocr_text:
         return result
@@ -203,7 +204,7 @@ def parse_filename(filename: str) -> ParsedFile | None:
     # read the street .txt file from '../jpg' folder
     txt_filename = os.path.join("jpg", filename.replace("stacked_ocr", "street"))
     metadata = {}
-    with open(txt_filename, "r", encoding="utf-8") as f:
+    with open(txt_filename, encoding="utf-8") as f:
         metadata_text = f.read()
         metadata = parse_page_metadata(metadata_text)
     
@@ -260,7 +261,7 @@ def extract_voters_from_stacked_txt_files(
 
     task = None
     if progress:
-        task = progress.add_task(f"🔍 Crops -> OCR", total=len(files))
+        task = progress.add_task("🔍 Crops -> OCR", total=len(files))
 
     results = []
     start_time = time.perf_counter()
@@ -272,7 +273,7 @@ def extract_voters_from_stacked_txt_files(
     for file in files:
         path = os.path.join(crops_dir, file)
 
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             ocr_text = f.read()
 
         if not ocr_text.strip():
@@ -326,7 +327,7 @@ def extract_ocr_from_crops_in_parallel(total_crops: list[dict], progress=None, m
 
     task = None
     if progress:
-        task = progress.add_task(f"🔍 Crops -> OCR", total=len(sorted_crops))
+        task = progress.add_task("🔍 Crops -> OCR", total=len(sorted_crops))
 
     results = []
     start_time = time.perf_counter()
@@ -379,6 +380,7 @@ def extract_ocr_from_crops_in_parallel(total_crops: list[dict], progress=None, m
     return results
 
 from collections import defaultdict
+
 
 def assign_serial_numbers(results: list[dict]) -> list[dict]:
     """

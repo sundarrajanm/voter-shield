@@ -1,9 +1,10 @@
 import os
-from pdf2image import convert_from_path
-from PIL import Image
 import time
 
+from pdf2image import convert_from_path
+
 from logger import setup_logger
+
 logger = setup_logger()
 
 # def convert_pdfs_to_png(pdf_dir: str, png_dir: str, dpi: int, progress=None):
@@ -51,7 +52,6 @@ logger = setup_logger()
 #     logger.info(f"Total time taken: {elapsed_time:.3f} seconds.")
 #     logger.info("✅ PDF to PNG conversion completed.")
 
-from pdf2image import convert_from_path
 
 START_PAGE = 3 # skip first 2 pages
 
@@ -89,6 +89,7 @@ def _convert_single_pdf(
                 progress.advance(task_child)
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 def convert_pdfs_to_jpg(
     pdf_dir: str,
