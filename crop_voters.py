@@ -227,6 +227,9 @@ def crop_voter_boxes_dynamic(input_jpg):
         encoding="utf-8",
     ) as f:
         f.write(stacked_ocr_text)
+    logger.info(
+        f"Saved stacked OCR text: {os.path.basename(input_jpg).replace('.jpg', '')}_stacked_ocr.txt"
+    )
 
     return crops
 

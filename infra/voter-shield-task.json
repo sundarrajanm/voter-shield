@@ -1,0 +1,24 @@
+{
+  "family": "voter-shield-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "4096",
+  "memory": "8192",
+  "executionRoleArn": "arn:aws:iam::264676382451:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::264676382451:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "voter-shield",
+      "image": "264676382451.dkr.ecr.ap-south-1.amazonaws.com/voter-shield:latest",
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/voter-shield",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
