@@ -4,46 +4,74 @@ set -euo pipefail
 echo "🛡️ VoterShield – ECS Fargate Runner"
 echo "----------------------------------"
 
-# --- Config (edit if needed) ---
+# ---------- Defaults ----------
 DEFAULT_PROFILE="voter-shield"
 LOG_GROUP="/ecs/voter-shield"
 
-# -----------hardcoded------------
-export ECS_CLUSTER=default
-export TASK_FAMILY=voter-shield-task
-export SUBNET_ID=subnet-004483a36813c238e
-export SECURITY_GROUP=sg-0a47febe680b97754
-export AWS_REGION=ap-south-1
-export CONTAINER_NAME=voter-shield
-# -------------------------------
+# ---------- Hardcoded infra ----------
+export ECS_CLUSTER="default"
+export TASK_FAMILY="voter-shield-task"
+export SUBNET_ID="subnet-004483a36813c238e"
+export SECURITY_GROUP="sg-0a47febe680b97754"
+export AWS_REGION="ap-south-1"
+export CONTAINER_NAME="voter-shield"
+# ----------------------------------
 
-# These must already be exported OR hardcoded
+# ---------- Validate ----------
 : "${ECS_CLUSTER:?Missing ECS_CLUSTER}"
 : "${TASK_FAMILY:?Missing TASK_FAMILY}"
 : "${SUBNET_ID:?Missing SUBNET_ID}"
 : "${SECURITY_GROUP:?Missing SECURITY_GROUP}"
 : "${AWS_REGION:?Missing AWS_REGION}"
 
-# --- Ask for AWS profile ---
-read -rp "AWS profile [$DEFAULT_PROFILE]: " AWS_PROFILE
-AWS_PROFILE=${AWS_PROFILE:-$DEFAULT_PROFILE}
+# ---------- AWS profile ----------
+if [[ -t 0 ]]; then
+  read -rp "AWS profile [$DEFAULT_PROFILE]: " AWS_PROFILE
+  AWS_PROFILE=${AWS_PROFILE:-$DEFAULT_PROFILE}
+else
+  AWS_PROFILE=${AWS_PROFILE:-$DEFAULT_PROFILE}
+fi
 
 echo "🔑 Using AWS profile: $AWS_PROFILE"
+
+# ---------- Container args ----------
+CONTAINER_ARGS=("$@")
+
+if [[ ${#CONTAINER_ARGS[@]} -gt 0 ]]; then
+  echo "📦 Container arguments:"
+  printf '  %q\n' "${CONTAINER_ARGS[@]}"
+else
+  echo "📦 No container arguments provided"
+fi
+
+# ---------- Build overrides JSON ----------
+OVERRIDES_JSON=$(jq -n \
+  --arg name "$CONTAINER_NAME" \
+  --argjson args "$(printf '%s\n' "${CONTAINER_ARGS[@]}" | jq -R . | jq -s .)" \
+  '{
+    containerOverrides: [
+      {
+        name: $name,
+        command: $args
+      }
+    ]
+  }')
+
+# ---------- Run ECS task ----------
 echo "🚀 Launching ECS task..."
 
-# --- Run ECS task ---
 TASK_ARN=$(aws ecs run-task \
   --profile "$AWS_PROFILE" \
   --cluster "$ECS_CLUSTER" \
   --capacity-provider-strategy capacityProvider=FARGATE_SPOT,weight=1 \
   --task-definition "$TASK_FAMILY" \
   --count 1 \
+  --overrides "$OVERRIDES_JSON" \
   --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SECURITY_GROUP],assignPublicIp=ENABLED}" \
   --region "$AWS_REGION" \
   --query "tasks[0].taskArn" \
-  --output text 2>/dev/null || true)
+  --output text)
 
-# --- Validate launch ---
 if [[ -z "$TASK_ARN" || "$TASK_ARN" == "None" ]]; then
   echo "❌ Failed to start ECS task"
   exit 1
@@ -52,9 +80,9 @@ fi
 TASK_ID=$(basename "$TASK_ARN")
 echo "🆔 Task ID: $TASK_ID"
 
+# ---------- Wait for RUNNING ----------
 echo "⏳ Waiting for task to start..."
 
-# --- Wait until RUNNING or STOPPED ---
 while true; do
   STATUS=$(aws ecs describe-tasks \
     --profile "$AWS_PROFILE" \
@@ -64,28 +92,30 @@ while true; do
     --query "tasks[0].lastStatus" \
     --output text)
 
-  if [[ "$STATUS" == "RUNNING" ]]; then
-    echo "✅ Task is RUNNING"
-    break
-  fi
-
-  if [[ "$STATUS" == "STOPPED" ]]; then
-    echo "❌ Task stopped before running"
-    aws ecs describe-tasks \
-      --profile "$AWS_PROFILE" \
-      --cluster "$ECS_CLUSTER" \
-      --tasks "$TASK_ARN" \
-      --region "$AWS_REGION" \
-      --query "tasks[0].stoppedReason" \
-      --output text
-    exit 1
-  fi
-
-  echo "⏳ Current status: $STATUS. Retrying after waiting for 2 seconds..."
-  sleep 2
+  case "$STATUS" in
+    RUNNING)
+      echo "✅ Task is RUNNING"
+      break
+      ;;
+    STOPPED)
+      echo "❌ Task stopped before running"
+      aws ecs describe-tasks \
+        --profile "$AWS_PROFILE" \
+        --cluster "$ECS_CLUSTER" \
+        --tasks "$TASK_ARN" \
+        --region "$AWS_REGION" \
+        --query "tasks[0].stoppedReason" \
+        --output text
+      exit 1
+      ;;
+    *)
+      echo "⏳ Current status: $STATUS"
+      sleep 2
+      ;;
+  esac
 done
 
-# --- Start log tail in background ---
+# ---------- Tail logs ----------
 echo "📜 Streaming logs..."
 aws logs tail "$LOG_GROUP" \
   --profile "$AWS_PROFILE" \
@@ -94,17 +124,17 @@ aws logs tail "$LOG_GROUP" \
   --region "$AWS_REGION" &
 LOG_PID=$!
 
-# --- Wait for task to exit ---
+# ---------- Wait for completion ----------
 aws ecs wait tasks-stopped \
   --profile "$AWS_PROFILE" \
   --cluster "$ECS_CLUSTER" \
   --tasks "$TASK_ARN" \
   --region "$AWS_REGION"
 
-# --- Stop log tail ---
+# ---------- Stop log tail ----------
 kill "$LOG_PID" 2>/dev/null || true
 
-# --- Final status ---
+# ---------- Exit code ----------
 EXIT_CODE=$(aws ecs describe-tasks \
   --profile "$AWS_PROFILE" \
   --cluster "$ECS_CLUSTER" \

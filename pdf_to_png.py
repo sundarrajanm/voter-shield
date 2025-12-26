@@ -34,6 +34,7 @@ def _convert_single_pdf(pdf_path: str, jpg_dir: str, dpi: int):
             logger.info(f"   ✅ Saved {out}")
     logger.info(f"✅ Completed conversion of {pdf_path}")
 
+
 def convert_pdfs_to_jpg(
     pdf_dir: str, jpg_dir: str, dpi: int, progress=None, max_workers=4, limit=None
 ):
@@ -54,9 +55,7 @@ def convert_pdfs_to_jpg(
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_pdf = {
-            executor.submit(
-                _convert_single_pdf, os.path.join(pdf_dir, file), jpg_dir, dpi
-            ): file
+            executor.submit(_convert_single_pdf, os.path.join(pdf_dir, file), jpg_dir, dpi): file
             for file in pdf_files
         }
 
