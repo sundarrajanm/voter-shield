@@ -20,9 +20,7 @@ from write_csv import write_final_csv
 console = Console(force_terminal=True)
 logger = setup_logger()
 
-max_workers = 4
-
-
+max_workers = 1
 
 def clean_directory(dir_path: str):
     if os.path.exists(dir_path):
@@ -76,7 +74,7 @@ def main():
             DPI,
             progress=progress,
             max_workers=max_workers,
-            limit=1,
+            limit=None,
         )
         logger.info("✅ PDFs conversion completed")
 
