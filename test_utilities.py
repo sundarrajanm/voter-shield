@@ -4,7 +4,7 @@ from utilities import normalize_tamil_text, parse_page_metadata_tamil
 def test_parse_page_metadata_tamil():
     # Read sample OCR text from sample_tamil_ocr.txt
     with open(
-        "tests/fixtures/2025-EROLLGEN-S22-114-FinalRoll-Revision1-TAM-1-WI_page_01_street.txt",
+        "tests/fixtures/unit/2025-EROLLGEN-S22-114-FinalRoll-Revision1-TAM-1-WI_page_01_street.txt",
         encoding="utf-8",
     ) as f:
         text = f.read()

@@ -6,10 +6,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-FIXTURES = ROOT / "tests" / "fixtures"
-
-INPUT_PDF = FIXTURES / "2025-EROLLGEN-S22-116-FinalRoll-Revision1-ENG-244-WI.pdf"
+FIXTURES = ROOT / "tests" / "fixtures" / "regression"
 EXPECTED_CSV = FIXTURES / "expected_final_voter_data.csv"
+
 GENERATED_CSV = ROOT / "csv" / "final_voter_data.csv"
 
 

@@ -69,7 +69,7 @@ def main():
     with progress:
         # 1️⃣ PDF → JPG
         convert_pdfs_to_jpg(
-            PDF_DIR if not args.regression else "tests/fixtures",
+            PDF_DIR if not args.regression else "tests/fixtures/regression",
             JPG_DIR,
             DPI,
             progress=progress,

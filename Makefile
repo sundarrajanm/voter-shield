@@ -6,22 +6,25 @@ setup:
 	pip install -r requirements.txt
 	pip install -r requirements-dev.txt
 
+unit:
+	pytest -m "not regression" -v -s
+
+run: unit
+	python main.py --delete-old
+
 check-quality:
 	./scripts/quality.sh
 
-run:
-	python main.py --delete-old
-
-build:
+build: unit
 	docker build -t $(IMAGE) .
 
-build-on-mac:
+build-on-mac: unit
 	DOCKER_BUILDKIT=0 docker build \
 		--platform linux/amd64 \
 		-t $(IMAGE) \
 		.
 
-run-dev-docker:
+run-dev-docker: unit
 	time docker run --rm \
 		--cpus=1 \
 		--memory=4g \
