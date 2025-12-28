@@ -1,0 +1,61 @@
+# Exclude large/generated project folders
+jpg/
+png/
+crops/
+csv/
+ocr/
+logs/
+infra/
+
+# Python caches / virtualenvs / test artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+.venv/
+venv/
+.env
+.pytest_cache/
+
+# Editor / OS files
+.DS_Store
+*.swp
+*.swo
+
+# Git and build artifacts
+.git
+.gitignore
+node_modules/
+build/
+dist/
+```// filepath: /home/bumblebee/data/dev/projects/eci/extractor/voter-shield/.dockerignore
+# Exclude large/generated project folders
+jpg/
+png/
+crops/
+csv/
+ocr/
+logs/
+infra/
+
+# Python caches / virtualenvs / test artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+.venv/
+venv/
+.env
+.pytest_cache/
+
+# Editor / OS files
+.DS_Store
+*.swp
+*.swo
+
+# Git and build artifacts
+.git
+.gitignore
+node_modules/
+build/
+dist/

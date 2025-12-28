@@ -29,6 +29,10 @@ def clean_directory(dir_path: str):
             if os.path.isfile(file_path):
                 os.remove(file_path)
 
+def create_directories():
+     for d in [CROPS_DIR, CSV_DIR, JPG_DIR, OCR_DIR,PDF_DIR]:
+        os.makedirs(d, exist_ok=True)
+
 
 def main():
     parser = argparse.ArgumentParser(description="VoterShield Pipeline")
@@ -44,6 +48,10 @@ def main():
         "--s3-output",
         help="s3:// path where output CSV should be uploaded",
     )
+    parser.add_argument(
+        "--output-identifier",
+        help="a unique identifier to identify the produced output",
+    )
 
     args = parser.parse_args()
 
@@ -52,7 +60,6 @@ def main():
     # --- Handle S3 input ---
     if args.s3_input:
         logger.info("📥 S3 input detected, preparing PDF directory")
-
         clean_directory(PDF_DIR)
 
         s3_inputs = [p.strip() for p in args.s3_input.split(",") if p.strip()]
@@ -62,7 +69,7 @@ def main():
     if args.delete_old:
         for dir_path in [JPG_DIR, CROPS_DIR, OCR_DIR, CSV_DIR]:
             clean_directory(dir_path)
-
+    create_directories()
     start_time = time.perf_counter()
     progress = get_progress()
 
@@ -104,7 +111,7 @@ def main():
     # --- Handle S3 output ---
     if args.s3_output:
         logger.info("📤 Uploading results to S3")
-        upload_directory(CSV_DIR, args.s3_output)
+        upload_directory(CSV_DIR, args.s3_output, args.output_identifier)
 
     elapsed = time.perf_counter() - start_time
     logger.info(f"🎉 Pipeline completed successfully in {elapsed:.2f} seconds")

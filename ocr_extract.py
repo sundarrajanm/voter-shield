@@ -39,7 +39,7 @@ def extract_epic_id(crop):
     return epic_text
 
 
-def extract_text_from_image(crop, lang="eng") -> str:
+def extract_text_from_image(crop, lang="tam+eng") -> str:
     text = pytesseract.image_to_string(crop, lang=lang, config="--psm 6 --oem 1")
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     return "\n".join(lines)

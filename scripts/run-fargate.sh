@@ -10,7 +10,7 @@ LOG_GROUP="/ecs/voter-shield"
 
 # ---------- Hardcoded infra ----------
 export ECS_CLUSTER="default"
-export TASK_FAMILY="voter-shield-task"
+export TASK_FAMILY="voter-shield-task-1cpu-4gb"
 export SUBNET_ID="subnet-004483a36813c238e"
 export SECURITY_GROUP="sg-0a47febe680b97754"
 export AWS_REGION="ap-south-1"

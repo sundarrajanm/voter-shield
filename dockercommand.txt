@@ -1,0 +1,2 @@
+docker run --rm voter-shield python main.py --constituency-number 999 --batch-no B01 --pdf-files s3://264676382451-eci-download/sample/sample_tamil.pdf
+

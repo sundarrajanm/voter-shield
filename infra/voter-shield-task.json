@@ -1,9 +1,9 @@
 {
-  "family": "voter-shield-task",
+  "family": "voter-shield-task-1cpu-4gb",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
-  "cpu": "4096",
-  "memory": "8192",
+  "cpu": "1024",
+  "memory": "4096",
   "executionRoleArn": "arn:aws:iam::264676382451:role/ecsTaskExecutionRole",
   "taskRoleArn": "arn:aws:iam::264676382451:role/ecsTaskRole",
   "containerDefinitions": [
