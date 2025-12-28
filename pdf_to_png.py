@@ -4,22 +4,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pdf2image import convert_from_path
 
+from crop_voters import detect_ocr_language_from_filename
 from logger import setup_logger
 
 logger = setup_logger()
 
-START_PAGE = 3  # skip first 2 pages
+ENG_START_PAGE = 3  # skip first 2 pages
+TAM_START_PAGE = 4  # skip first 3 pages
 
 
 def _convert_single_pdf(pdf_path: str, jpg_dir: str, dpi: int):
     logger.info(f"🚀 Converting {pdf_path}")
+
+    lang = detect_ocr_language_from_filename(os.path.basename(pdf_path))
+    logger.info(f"   🈯 Detected OCR language: {lang}")
+
     pages = convert_from_path(
         pdf_path,
         dpi=dpi,
         fmt="jpeg",
         thread_count=4,
         jpegopt={"quality": 95},
-        first_page=START_PAGE,
+        # set first_page based on language
+        first_page=TAM_START_PAGE if "tam+eng" in lang else ENG_START_PAGE,
     )
 
     total_pages = len(pages) - 1  # skip last page

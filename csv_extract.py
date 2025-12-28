@@ -1,8 +1,9 @@
 import re
 import time
-import unicodedata
 
+from crop_voters import detect_ocr_language_from_filename
 from logger import setup_logger
+from utilities import parse_single_voter_ocr_tamil, split_voters_from_page_ocr
 
 logger = setup_logger()
 
@@ -148,52 +149,21 @@ def looks_like_epic_line(line: str) -> bool:
     return bool(re.match(r"[A-Z]{2,}\d{5,}", cleaned, re.IGNORECASE))
 
 
-VOTER_END_TOKEN = "VOTER_END"
-
-
-def split_voters_from_page_ocr(page_ocr_text: str) -> list[str]:
-    """
-    Split page-level OCR text into individual voter OCR blocks
-    using ONLY the VOTER_END token as the delimiter.
-    """
-
-    text = page_ocr_text.replace("\r", "").strip()
-    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
-
-    voters: list[str] = []
-    buf: list[str] = []
-
-    for line in lines:
-        # Collect everything
-        if VOTER_END_TOKEN in line:
-            # remove the marker before appending
-            cleaned_line = line.replace(VOTER_END_TOKEN, "").strip()
-            if cleaned_line:
-                buf.append(cleaned_line)
-
-            voter_text = "\n".join(buf).strip()
-            if voter_text:
-                voters.append(voter_text)
-
-            buf = []  # reset buffer
-        else:
-            buf.append(line)
-
-    # ⚠️ Safety: drop trailing incomplete voter (no VOTER_END)
-    return voters
-
-
 # Given OCR text for a single page, parse and return list of voter dicts
-def parse_per_page_ocr_text(ocr_text: str, limit=None) -> list[dict]:
+def parse_per_page_ocr_text(ocr_text: str, lang, limit=None) -> list[dict]:
     voter_texts = split_voters_from_page_ocr(ocr_text)
     voters = []
 
     for vt in voter_texts:
-        voter = parse_single_voter_ocr(vt)
+        if lang == "tam+eng":
+            voter = parse_single_voter_ocr_tamil(vt)
+        else:
+            voter = parse_single_voter_ocr(vt)
+
         # voter["ocr_block"] = vt  # for debugging
 
-        if not voter["epic_id"]:
-            logger.info(f"⚠️ EPIC ID missing for voter OCR:\n{vt}\n---")
+        # if not voter["epic_id"]:
+        #     logger.info(f"⚠️ EPIC ID missing for voter OCR:\n{vt}\n---")
 
         voters.append(voter)
         if limit is not None and len(voters) >= limit:
@@ -219,7 +189,8 @@ def clean_and_extract_csv_v2(ocr_results, progress=None, limit=None):
         if progress:
             progress.advance(task)
 
-        per_page_voters = parse_per_page_ocr_text(item["ocr_text"])
+        lang = detect_ocr_language_from_filename(item["source_image"])
+        per_page_voters = parse_per_page_ocr_text(item["ocr_text"], lang=lang)
         for v in per_page_voters:
             v.update(
                 {
@@ -372,55 +343,6 @@ def parse_single_voter_ocr(ocr_text: str) -> dict[str, str | None]:
     return result
 
 
-def normalize_ocr_text(text: str) -> str:
-    """
-    Normalize OCR text to remove invisible Unicode noise
-    that breaks regex matching (especially Tamil OCR).
-    """
-    if not text:
-        return text
-
-    # Unicode normalization
-    text = unicodedata.normalize("NFKC", text)
-
-    # Remove zero-width characters
-    text = re.sub(r"[\u200B-\u200D\uFEFF]", "", text)
-
-    # Normalize spaces
-    text = re.sub(r"\s+", " ", text)
-
-    return text.strip()
-
-
-FIELD_LABELS = {
-    "name": [
-        r"Name",
-        r"பெயர்",
-    ],
-    "father_name": [
-        r"Father\s+Name",
-        r"தந்தை\s*பெயர்",
-        r"தந்தையின்\s*பெயர்",
-    ],
-    "husband_name": [
-        r"Husband\s+Name",
-        r"கணவர்\s*பெயர்",
-    ],
-    "mother_name": [
-        r"Mother\s+Name",
-        r"தாய்\s*பெயர்",
-    ],
-    "other_name": [
-        r"Other",
-        r"மற்றவர்",
-    ],
-    "house_no": [
-        r"House\s+Number",
-        r"வீட்டு\s*எண்",
-    ],
-}
-
-
 def normalize_gender(value: str) -> str | None:
     v = value.strip().lower()
 
@@ -432,47 +354,47 @@ def normalize_gender(value: str) -> str | None:
     return None
 
 
-def parse_single_voter_ocr_multilang(ocr_text: str) -> dict[str, str | None]:
-    result = {
-        "name": None,
-        "father_name": None,
-        "husband_name": None,
-        "mother_name": None,
-        "other_name": None,
-        "house_no": None,
-        "age": None,
-        "gender": None,
-    }
+# def parse_single_voter_ocr_multilang(ocr_text: str) -> dict[str, str | None]:
+#     result = {
+#         "name": None,
+#         "father_name": None,
+#         "husband_name": None,
+#         "mother_name": None,
+#         "other_name": None,
+#         "house_no": None,
+#         "age": None,
+#         "gender": None,
+#     }
 
-    if not ocr_text:
-        return result
+#     if not ocr_text:
+#         return result
 
-    # 🔑 CRITICAL FIX
-    ocr_text = normalize_ocr_text(ocr_text)
+#     # 🔑 CRITICAL FIX
+#     ocr_text = normalize_ocr_text(ocr_text)
 
-    lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
+#     lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
 
-    for line in lines:
-        # --- FIELD LABELS ---
-        for field, patterns in FIELD_LABELS.items():
-            for p in patterns:
-                m = re.search(rf"{p}\s*[:=]\s*(.+)", line, re.IGNORECASE)
-                if m:
-                    result[field] = m.group(1).strip()
-                    break
+#     for line in lines:
+#         # --- FIELD LABELS ---
+#         for field, patterns in FIELD_LABELS.items():
+#             for p in patterns:
+#                 m = re.search(rf"{p}\s*[:=]\s*(.+)", line, re.IGNORECASE)
+#                 if m:
+#                     result[field] = m.group(1).strip()
+#                     break
 
-        # --- AGE ---
-        age_m = re.search(r"(Age|வயது)\s*[:+]\s*(\d+)", line, re.IGNORECASE)
-        if age_m:
-            result["age"] = int(age_m.group(2))
+#         # --- AGE ---
+#         age_m = re.search(r"(Age|வயது)\s*[:+]\s*(\d+)", line, re.IGNORECASE)
+#         if age_m:
+#             result["age"] = int(age_m.group(2))
 
-        # --- GENDER ---
-        gender_m = re.search(
-            r"(Gender|பாலினம்)\s*[:+]\s*([A-Za-z\u0B80-\u0BFF]+)",
-            line,
-            re.IGNORECASE,
-        )
-        if gender_m:
-            result["gender"] = normalize_gender(gender_m.group(2))
+#         # --- GENDER ---
+#         gender_m = re.search(
+#             r"(Gender|பாலினம்)\s*[:+]\s*([A-Za-z\u0B80-\u0BFF]+)",
+#             line,
+#             re.IGNORECASE,
+#         )
+#         if gender_m:
+#             result["gender"] = normalize_gender(gender_m.group(2))
 
-    return result
+#     return result

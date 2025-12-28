@@ -20,7 +20,9 @@ from write_csv import write_final_csv
 console = Console(force_terminal=True)
 logger = setup_logger()
 
-max_workers = 1
+max_workers = 4
+
+
 
 def clean_directory(dir_path: str):
     if os.path.exists(dir_path):
@@ -83,8 +85,7 @@ def main():
         logger.info(f"✅ Cropping completed: {len(total_crops)} crops extracted")
 
         # 3️⃣ OCR extraction
-        extract_voters_from_stacked_txt_files(CROPS_DIR, progress=progress)
-
+        extract_voters_from_stacked_txt_files(CROPS_DIR, progress=progress, limit=None)
         with open("ocr/ocr_results.json", encoding="utf-8") as f:
             ocr_results = json.load(f)
 

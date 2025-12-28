@@ -9,8 +9,28 @@ from typing import NamedTuple
 import pytesseract
 
 from logger import isDebugMode, setup_logger
+from utilities import parse_page_metadata_tamil
 
 logger = setup_logger()
+
+
+def detect_ocr_language_from_filename(filename: str) -> str:
+    """
+    Detect OCR language based on PNG/PDF filename.
+
+    Returns:
+        "eng"      → for English-only OCR
+        "tam+eng"  → for Tamil + English OCR
+    """
+    fname = filename.upper()
+
+    if "-TAM-" in fname:
+        return "tam+eng"
+    elif "-ENG-" in fname:
+        return "eng"
+    else:
+        # Safe default (numbers + English labels still work)
+        return "eng"
 
 
 def extract_epic_id(crop):
@@ -96,7 +116,12 @@ def parse_filename(filename: str) -> ParsedFile | None:
     metadata = {}
     with open(txt_filename, encoding="utf-8") as f:
         metadata_text = f.read()
-        metadata = parse_page_metadata(metadata_text)
+        lang = detect_ocr_language_from_filename(filename)
+        if lang.startswith("tam"):
+            metadata = parse_page_metadata_tamil(metadata_text)
+        else:
+            metadata = parse_page_metadata(metadata_text)
+            logger.info(f"Parsed metadata for {filename}: {metadata}")
 
     return ParsedFile(
         doc_id=m.group("doc"),
@@ -138,12 +163,15 @@ def _ocr_worker(crop, crop_name: str, lang: str) -> dict:
         }
 
 
-def extract_voters_from_stacked_txt_files(crops_dir: str, progress=None):
+def extract_voters_from_stacked_txt_files(crops_dir: str, progress=None, limit=None) -> list[dict]:
     """
     Extracts voter information from stacked text files corresponding to cropped images.
     """
 
     files = sorted(f for f in os.listdir(crops_dir) if f.lower().endswith(".txt"))
+
+    if limit:
+        files = files[:limit]
 
     task = None
     if progress:

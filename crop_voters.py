@@ -129,7 +129,8 @@ def append_voter_end_marker(
 
 def crop_voter_boxes_dynamic(input_jpg):
     # os.makedirs(CROPS_DIR, exist_ok=True)
-    extract_street_info(input_jpg)
+    lang = detect_ocr_language_from_filename(input_jpg)
+    extract_street_info(input_jpg, lang=lang)
 
     img = Image.open(input_jpg)
     W, H = img.size
@@ -200,7 +201,7 @@ def crop_voter_boxes_dynamic(input_jpg):
                 {
                     "crop_name": f"{os.path.basename(input_jpg).replace('.jpg', '')}_voter_{count:02d}.jpg",
                     "crop": crop,
-                    "lang": detect_ocr_language_from_filename(input_jpg),
+                    "lang": lang,
                 }
             )
 
@@ -218,8 +219,10 @@ def crop_voter_boxes_dynamic(input_jpg):
     )
 
     stacked_ocr_text = extract_text_from_image(
-        f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_crops.jpg"
+        f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_crops.jpg",
+        lang=lang,
     )
+
     # Save stacked OCR text to a file
     with open(
         f"{CROPS_DIR}/{os.path.basename(input_jpg).replace('.jpg', '')}_stacked_ocr.txt",
@@ -270,7 +273,7 @@ def crop_voter_boxes(png_dir: str, progress=None, limit=None):
     return crops
 
 
-def extract_street_info(input_jpg):
+def extract_street_info(input_jpg, lang):
     """
     Extracts street information from the top 5% area of the input page JPG using OCR.
     """
@@ -281,7 +284,7 @@ def extract_street_info(input_jpg):
     top_area = img.crop((0, 0, W, top_area_height))
 
     ocr_text = pytesseract.image_to_string(
-        top_area, lang="eng", config="--psm 6"
+        top_area, lang=lang, config="--psm 6"
     ).strip()  # Assume a single uniform block of text
 
     # Write the extracted text to a file
@@ -322,11 +325,10 @@ def crop_voter_boxes_parallel(jpg_dir: str, progress=None, max_workers=4, limit=
             try:
                 result = future.result()
                 crops.extend(result)
-            except Exception as e:
-                logger.error(f"❌ Failed cropping {jpg}: {e}")
-            finally:
                 if progress and task:
                     progress.advance(task)
+            except Exception as e:
+                logger.error(f"❌ Failed cropping {jpg}: {e}")
 
     elapsed_time = time.perf_counter() - start_time
     logger.info(f"Time taken by crop_voter_boxes: {elapsed_time:.3f} seconds.")
