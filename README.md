@@ -67,17 +67,15 @@ Each step is isolated and testable.
 ├── requirements-dev.txt # Development & quality tools
 ├── scripts/
 │ ├── quality.sh # Lint, format, and test gate
-│ └── run-docker.sh # Optional Docker helper
+│ └── run-fargate.sh # Helper to run against AWS
 ├── tests/
-│ ├── fixtures/ # Golden PDFs and CSVs
-│ └── test_regression.py # Regression test suite
+│ ├── fixtures/ # Test data for both unit & regression tests
+│ └── test_regression.py
 ├── Dockerfile # Calibration-grade container image
 ├── Makefile # Primary developer interface
 ├── pyproject.toml # Tool configuration
 └── README.md
 ```
-
-
 ---
 
 ## 🚀 Getting Started (Local)
@@ -125,19 +123,6 @@ This runs the pipeline:
 * Using a bind-mounted codebase for fast iteration
 
 This mode is ideal for performance tuning and memory calibration.
-
-## 🧪 Regression Testing
-VoterShield uses golden-file regression testing to prevent subtle OCR regressions.
-
-* Known PDFs are processed
-* Generated CSVs are compared field-by-field
-* Only actual differences are reported
-
-Tests can also be run directly:
-
-```
-pytest -q -ra --disable-warnings
-```
 
 ## 🐳 Docker & Scaling Model
 
