@@ -1,5 +1,23 @@
 import re
 
+def detect_ocr_language_from_filename(filename: str) -> str:
+    """
+    Detect OCR language based on PNG/PDF filename.
+
+    Returns:
+        "eng"      → for English-only OCR
+        "tam+eng"  → for Tamil + English OCR
+    """
+    fname = filename.upper()
+
+    if "-TAM-" in fname or "TAMIL" in fname:
+        return "tam+eng"
+    elif "-ENG-" in fname:
+        return "eng"
+    else:
+        # Safe default (numbers + English labels still work)
+        return "eng"
+
 ZERO_WIDTH_RE = re.compile(r"[\u200c\u200d\ufeff]")  # ZWNJ, ZWJ, BOM
 NBSP_RE = re.compile(r"[\u00a0]")  # non-breaking space
 

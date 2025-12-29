@@ -9,29 +9,9 @@ from typing import NamedTuple
 import pytesseract
 
 from logger import isDebugMode, setup_logger
-from utilities import parse_page_metadata_tamil
+from utilities import detect_ocr_language_from_filename, parse_page_metadata_tamil
 
 logger = setup_logger()
-
-
-def detect_ocr_language_from_filename(filename: str) -> str:
-    """
-    Detect OCR language based on PNG/PDF filename.
-
-    Returns:
-        "eng"      → for English-only OCR
-        "tam+eng"  → for Tamil + English OCR
-    """
-    fname = filename.upper()
-
-    if "-TAM-" in fname:
-        return "tam+eng"
-    elif "-ENG-" in fname:
-        return "eng"
-    else:
-        # Safe default (numbers + English labels still work)
-        return "eng"
-
 
 def extract_epic_id(crop):
     cw, ch = crop.size

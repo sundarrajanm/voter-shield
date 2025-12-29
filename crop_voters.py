@@ -8,27 +8,9 @@ from PIL import Image, ImageDraw
 from config import CROPS_DIR, VOTER_END_MARKER
 from logger import setup_logger
 from ocr_extract import extract_text_from_image
+from utilities import detect_ocr_language_from_filename
 
 logger = setup_logger()
-
-
-def detect_ocr_language_from_filename(filename: str) -> str:
-    """
-    Detect OCR language based on PNG/PDF filename.
-
-    Returns:
-        "eng"      → for English-only OCR
-        "tam+eng"  → for Tamil + English OCR
-    """
-    fname = filename.upper()
-
-    if "-TAM-" in fname:
-        return "tam+eng"
-    elif "-ENG-" in fname:
-        return "eng"
-    else:
-        # Safe default (numbers + English labels still work)
-        return "eng"
 
 
 def extract_epic_region(crop, epic_x_ratio=0.60, epic_y_ratio=0.25):

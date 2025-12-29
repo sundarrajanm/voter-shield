@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pdf2image import convert_from_path
 
-from crop_voters import detect_ocr_language_from_filename
 from logger import setup_logger
+from utilities import detect_ocr_language_from_filename
 
 logger = setup_logger()
 
