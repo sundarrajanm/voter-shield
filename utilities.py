@@ -1,5 +1,6 @@
 import re
 
+
 def detect_ocr_language_from_filename(filename: str) -> str:
     """
     Detect OCR language based on PNG/PDF filename.

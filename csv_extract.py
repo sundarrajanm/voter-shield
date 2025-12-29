@@ -2,7 +2,11 @@ import re
 import time
 
 from logger import setup_logger
-from utilities import detect_ocr_language_from_filename, parse_single_voter_ocr_tamil, split_voters_from_page_ocr
+from utilities import (
+    detect_ocr_language_from_filename,
+    parse_single_voter_ocr_tamil,
+    split_voters_from_page_ocr,
+)
 
 logger = setup_logger()
 
