@@ -102,7 +102,6 @@ def parse_filename(filename: str) -> ParsedFile | None:
             metadata = parse_page_metadata_tamil(metadata_text)
         else:
             metadata = parse_page_metadata(metadata_text)
-            logger.info(f"Parsed metadata for {filename}: {metadata}")
 
     return ParsedFile(
         doc_id=m.group("doc"),

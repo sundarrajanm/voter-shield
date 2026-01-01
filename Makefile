@@ -13,7 +13,7 @@ run: unit
 	python main.py --delete-old $(ARGS)
 
 run-once: unit
-	python main.py --delete-old --input-folder run-once
+	python main.py --delete-old $(ARGS) --input-folder run-once
 
 check-quality:
 	./scripts/quality.sh
