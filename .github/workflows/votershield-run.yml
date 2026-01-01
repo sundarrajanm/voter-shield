@@ -1,4 +1,4 @@
-name: VoterShield – Run Single PDF
+name: VoterShield – Extract from Google Folder
 
 on:
   workflow_dispatch:
