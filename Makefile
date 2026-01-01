@@ -12,6 +12,9 @@ unit:
 run: unit
 	python main.py --delete-old
 
+run-once: unit
+	python main.py --delete-old --input-folder run-once
+
 check-quality:
 	./scripts/quality.sh
 

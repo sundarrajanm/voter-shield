@@ -35,6 +35,7 @@ def main():
 
     parser.add_argument("--delete-old", action="store_true")
     parser.add_argument("--regression", action="store_true")
+    parser.add_argument("--input-folder", help="Path to folder containing input PDFs", default=PDF_DIR)
 
     parser.add_argument(
         "--s3-input",
@@ -69,7 +70,7 @@ def main():
     with progress:
         # 1️⃣ PDF → JPG
         convert_pdfs_to_jpg(
-            PDF_DIR if not args.regression else "tests/fixtures/regression",
+            args.input_folder if not args.regression else "tests/fixtures/regression",
             JPG_DIR,
             DPI,
             progress=progress,

@@ -1,0 +1,58 @@
+name: VoterShield – Run Single PDF
+
+on:
+  workflow_dispatch:
+    inputs:
+      pdf_url:
+        description: "Public URL of the Electoral Roll PDF"
+        required: true
+      run_name:
+        description: "Optional run label"
+        required: false
+        default: "manual-run"
+
+jobs:
+  run-votershield:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            tesseract-ocr \
+            poppler-utils \
+            libglib2.0-0 \
+            libsm6 \
+            libxext6 \
+            libxrender1
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Download input PDF
+        run: |
+          mkdir -p run-once
+          cd run-once
+          # Use the same file name as in the URL
+          curl -O "${{ github.event.inputs.pdf_url }}"
+
+      - name: Run VoterShield pipeline
+        run: |
+          make run-once
+
+      - name: Upload CSV output
+        uses: actions/upload-artifact@v4
+        with:
+          name: votershield-output-${{ github.event.inputs.run_name }}
+          path: csv/*.csv
