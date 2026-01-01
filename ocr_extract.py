@@ -6,6 +6,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import NamedTuple
 
+from config import OCR_DIR
 import pytesseract
 
 from logger import isDebugMode, setup_logger
@@ -145,8 +146,9 @@ def _ocr_worker(crop, crop_name: str, lang: str) -> dict:
 
 def extract_voters_from_stacked_txt_files(crops_dir: str, progress=None, limit=None) -> list[dict]:
     """
-    Extracts voter information from stacked text files corresponding to cropped images.
+    Extracts voter information from stacked text files corresponding to cropped images to OCR_DIR.
     """
+    os.makedirs(OCR_DIR, exist_ok=True)
 
     files = sorted(f for f in os.listdir(crops_dir) if f.lower().endswith(".txt"))
 
