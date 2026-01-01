@@ -20,8 +20,6 @@ from write_csv import write_final_csv
 console = Console(force_terminal=True)
 logger = setup_logger()
 
-max_workers = 1
-
 def clean_directory(dir_path: str):
     if os.path.exists(dir_path):
         for file in os.listdir(dir_path):
@@ -36,6 +34,9 @@ def main():
     parser.add_argument("--delete-old", action="store_true")
     parser.add_argument("--regression", action="store_true")
     parser.add_argument("--input-folder", help="Path to folder containing input PDFs", default=PDF_DIR)
+
+    parser.add_argument("--max-workers", type=int, default=1, help="Maximum number of worker threads")
+    max_workers = parser.parse_args().max_workers
 
     parser.add_argument(
         "--s3-input",

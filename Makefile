@@ -10,7 +10,7 @@ unit:
 	pytest -m "not regression" -v -s
 
 run: unit
-	python main.py --delete-old
+	python main.py --delete-old $(ARGS)
 
 run-once: unit
 	python main.py --delete-old --input-folder run-once

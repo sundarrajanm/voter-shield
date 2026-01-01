@@ -110,7 +110,6 @@ def append_voter_end_marker(
 
 
 def crop_voter_boxes_dynamic(input_jpg):
-    # os.makedirs(CROPS_DIR, exist_ok=True)
     lang = detect_ocr_language_from_filename(input_jpg)
     extract_street_info(input_jpg, lang=lang)
 
@@ -281,6 +280,7 @@ def crop_voter_boxes_parallel(jpg_dir: str, progress=None, max_workers=4, limit=
     """
     Crops voter boxes from each page JPG using multi-threading.
     """
+    os.makedirs(CROPS_DIR, exist_ok=True)
 
     start_time = time.perf_counter()
 
