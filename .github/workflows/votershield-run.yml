@@ -3,8 +3,8 @@ name: VoterShield – Run Single PDF
 on:
   workflow_dispatch:
     inputs:
-      gdrive_file_id:
-        description: "Google Drive file ID of the Electoral Roll PDF without filename changes and with anyone-with-link enabled"
+      gdrive_folder_id:
+        description: "Google Drive folder ID of the Electoral Roll PDFs without any filename changes and with anyone-with-link enabled"
         required: true
       run_name:
         description: "Optional run label"
@@ -14,7 +14,7 @@ on:
 jobs:
   run-votershield:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repo
@@ -44,8 +44,7 @@ jobs:
       - name: Download PDF from Google Drive
         run: |
           mkdir -p run-once
-          cd run-once
-          gdown "https://drive.google.com/uc?id=${{ github.event.inputs.gdrive_file_id }}"
+          gdown --folder "https://drive.google.com/drive/folders/${{ github.event.inputs.gdrive_folder_id }}" --output run-once
 
       - name: Run VoterShield pipeline
         run: |
