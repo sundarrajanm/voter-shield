@@ -15,9 +15,6 @@ def write_final_csv(cleaned_records, CSV_DIR):
         all_fieldnames.update(record.keys())
 
     preferred_order = [
-        "assembly",
-        "part_no",
-        "street",
         "serial_no",
         "epic_id",
         "name",
@@ -25,9 +22,12 @@ def write_final_csv(cleaned_records, CSV_DIR):
         "mother_name",
         "husband_name",
         "other_name",
-        "house_no",
         "age",
         "gender",
+        "house_no",
+        "street",
+        "part_no",
+        "assembly",
     ]
 
     filtered_columns = ["source_image", "ocr_text", "doc_id", "page_no", "voter_no"]
