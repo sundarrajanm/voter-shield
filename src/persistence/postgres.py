@@ -92,9 +92,18 @@ class PostgresRepository:
                         administrative_address JSONB DEFAULT '{}',
                         polling_details JSONB DEFAULT '{}',
                         detailed_elector_summary JSONB DEFAULT '{}',
-                        authority_verification JSONB DEFAULT '{}'
+                        authority_verification JSONB DEFAULT '{}',
+                        output_identifier TEXT
                     );
                 """)
+                
+                # Migration: Add output_identifier if not exists
+                try:
+                    cur.execute("ALTER TABLE metadata ADD COLUMN IF NOT EXISTS output_identifier TEXT;")
+                except Exception:
+                    conn.rollback()
+                else:
+                    conn.commit()
                 
                 # Create voters table with expanded fields to match CSV
                 cur.execute("""
@@ -196,6 +205,18 @@ class PostgresRepository:
         pdf_name = document.pdf_name
         # If document_id in metadata is empty, fallback to document.id
         doc_id = meta.document_id if meta.document_id else document.id
+
+        # Check for existing document with same pdf_name
+        cur.execute("SELECT document_id FROM metadata WHERE pdf_name = %s", (pdf_name,))
+        result = cur.fetchone()
+        if result:
+            existing_doc_id = result[0]
+            if existing_doc_id != doc_id:
+                logger.info(f"Found existing document with pdf_name '{pdf_name}' (id={existing_doc_id}). Updating this instead of creating {doc_id}.")
+                doc_id = existing_doc_id
+                # Update the document object too so voters get the right ID
+                if meta:
+                    meta.document_id = doc_id
         
         query = """
             INSERT INTO metadata (
@@ -206,6 +227,7 @@ class PostgresRepository:
                 police_station, taluk_or_block, subdivision, district, pin_code, panchayat_name,
                 constituency_details, administrative_address,
                 polling_details, detailed_elector_summary, authority_verification,
+                output_identifier,
                 updated_at
             ) VALUES (
                 %s, %s, %s, %s, %s,
@@ -215,6 +237,7 @@ class PostgresRepository:
                 %s, %s, %s, %s, %s, %s,
                 %s, %s,
                 %s, %s, %s,
+                %s,
                 CURRENT_TIMESTAMP
             )
             ON CONFLICT (document_id) DO UPDATE SET
@@ -242,6 +265,7 @@ class PostgresRepository:
                 polling_details = EXCLUDED.polling_details,
                 detailed_elector_summary = EXCLUDED.detailed_elector_summary,
                 authority_verification = EXCLUDED.authority_verification,
+                output_identifier = EXCLUDED.output_identifier,
                 updated_at = CURRENT_TIMESTAMP;
         """
         
@@ -276,7 +300,8 @@ class PostgresRepository:
             Json(meta.administrative_address.to_dict()),
             Json(meta.polling_details.to_dict()),
             Json(meta.detailed_elector_summary.to_dict()),
-            Json(auth_veri)
+            Json(auth_veri),
+            meta.output_identifier
         ))
 
     def _save_voters(self, cur, document: ProcessedDocument, voters_context: List[tuple]):

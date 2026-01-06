@@ -585,6 +585,21 @@ def process_pdf(
             # S3 Upload / Local Export
             if args.s3_output and csv_paths:
                 export_to_destination(csv_paths, args.s3_output, config)
+                
+            # Update Database after CSV (ensures output_identifier and any late updates are saved)
+            if config.db.is_configured and document.status == "completed":
+                logger.info("Updating PostgreSQL database after CSV generation...")
+                try:
+                    from src.persistence.postgres import PostgresRepository
+                    db_repo = PostgresRepository(config.db)
+                    # Ensure output_identifier is in metadata if provided
+                    if args.output_identifier and document.metadata:
+                        document.metadata.output_identifier = args.output_identifier
+                    
+                    if db_repo.save_document(document):
+                        logger.info("Successfully updated database")
+                except Exception as e:
+                    logger.error(f"Database update failed: {e}")
     
     return document
 
@@ -817,6 +832,21 @@ def process_extracted_folder(
             # S3 Upload / Local Export
             if args.s3_output and csv_paths:
                  export_to_destination(csv_paths, args.s3_output, config)
+
+            # Update Database after CSV
+            if config.db.is_configured and document.status == "completed":
+                logger.info("Updating PostgreSQL database after CSV generation...")
+                try:
+                    from src.persistence.postgres import PostgresRepository
+                    db_repo = PostgresRepository(config.db)
+                    # Ensure output_identifier is in metadata if provided
+                    if args.output_identifier and document.metadata:
+                        document.metadata.output_identifier = args.output_identifier
+                    
+                    if db_repo.save_document(document):
+                        logger.info("Successfully updated database")
+                except Exception as e:
+                    logger.error(f"Database update failed: {e}")
 
         # If we are ONLY running CSV step on existing folder
         elif args.step == "csv":

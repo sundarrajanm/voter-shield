@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS metadata (
     administrative_address JSONB DEFAULT '{}',
     polling_details JSONB DEFAULT '{}',
     detailed_elector_summary JSONB DEFAULT '{}',
-    authority_verification JSONB DEFAULT '{}'
+    authority_verification JSONB DEFAULT '{}',
+    output_identifier TEXT
 );
 
 -- 2. Voters Table

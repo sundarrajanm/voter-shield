@@ -146,11 +146,13 @@ class OCRResult:
     
     def to_voter(self, sequence_in_page: int = 0, sequence_in_document: int = 0) -> Voter:
         """Convert to Voter model."""
-        # Use extracted serial_no if available (e.g. from AI), otherwise use sequence
-        if self.serial_no:
+        # Per user request: Serial number MUST be the sequence in document to avoid OCR manipulation
+        if sequence_in_document > 0:
+            serial_no = str(sequence_in_document)
+        elif self.serial_no:
             serial_no = self.serial_no
         else:
-            serial_no = str(sequence_in_document) if sequence_in_document > 0 else ""
+            serial_no = str(sequence_in_page) if sequence_in_page > 0 else ""
         
         # Calculate extraction confidence based on field completeness
         fields_present = sum([
@@ -391,9 +393,16 @@ class OCRProcessor(BaseProcessor):
                 for idx, ocr_result in enumerate(result.records, start=1):
                     if not ocr_result.error:
                         voter = ocr_result.to_voter(
-                            sequence_in_page=idx,
+                        sequence = idx
+                        voter = ocr_result.to_voter(
+                            sequence_in_page=sequence,
                             sequence_in_document=total_voters - len(result.records) + idx
                         )
+                        # Set serial_no to sequence_in_page if serial_no is empty 
+                        # or if user explicitly requested serial_no to be sequence_in_page
+                        if not voter.serial_no:
+                            voter.serial_no = str(sequence)
+                            
                         voter.page_id = result.page_id
                         page_voters.append(voter)
                 self.on_page_complete(result.page_id, page_voters, result.total_seconds)
@@ -512,9 +521,15 @@ class OCRProcessor(BaseProcessor):
                 for idx, ocr_result in enumerate(page_records, start=1):
                     if not ocr_result.error:
                         voter = ocr_result.to_voter(
-                            sequence_in_page=idx,
+                        sequence = idx
+                        voter = ocr_result.to_voter(
+                            sequence_in_page=sequence,
                             sequence_in_document=total_voters - len(page_records) + idx
                         )
+                        # Set serial_no to sequence_in_page if serial_no is empty 
+                        if not voter.serial_no:
+                            voter.serial_no = str(sequence)
+
                         voter.page_id = page_id
                         page_voters.append(voter)
                 self.on_page_complete(page_id, page_voters, page_time)
