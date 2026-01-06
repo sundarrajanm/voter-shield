@@ -69,9 +69,6 @@ CREATE TABLE IF NOT EXISTS voters (
     sequence_in_page INTEGER,
     epic_valid BOOLEAN,
     deleted TEXT,  -- Empty string = not deleted, 'true' = deleted
-    
-    -- Additional data as JSONB
-    raw_data JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
