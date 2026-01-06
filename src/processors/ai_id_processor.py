@@ -22,6 +22,7 @@ logger = get_logger("ai_id_processor")
 @dataclass
 class IdExtractionResult:
     """Result from AI ID extraction."""
+    serial_no: str
     house_no: str
 
 
@@ -130,10 +131,10 @@ class AIIdProcessor(BaseProcessor):
         # Save debug info for each page
         for page_id, results in self.page_results.items():
             self.save_debug_info(f"id_extract_{page_id}", [
-                {"house": r.house_no}
+                {"serial_no": r.serial_no, "house_no": r.house_no}
                 for r in results
             ])
-            self.log_info(f"Extracted {len(results)} house numbers for {page_id}")
+            self.log_info(f"Extracted {len(results)} voter records (serial+house) for {page_id}")
             
         return True
 
@@ -161,14 +162,39 @@ class AIIdProcessor(BaseProcessor):
                     {
                         "type": "text", 
                         "text": f"""
-Extract house numbers from electoral roll images. Return JSON object with page-wise arrays.
+Extract serial numbers and house numbers from electoral roll ID strip images.
+
+Each image shows multiple horizontal strips with serial number on the left and house number on the right.
 
 Images belong to: {mapping_desc}
 
-Process all rows top-to-bottom. Use "" for empty/illegible fields.
-DO NOT use markdown code blocks. Return raw JSON only.
+Return data in TOML format with page-wise arrays. Use "" for empty/illegible fields.
+DO NOT use markdown code blocks. Return raw TOML only.
 
-Example output: {{"page-004": ["12", "34/A"], "page-005": ["5-B", "", "123"]}}
+Format:
+[page-XXX]
+voter_records = [
+  ["serial1", "house1"],
+  ["serial2", "house2"],
+  ["serial3", "house3"]
+]
+
+Example output:
+[page-004]
+voter_records = [
+  ["211", "12"],
+  ["212", "34/A"],
+  ["213", "5-B"]
+]
+
+[page-005]
+voter_records = [
+  ["214", "16(A)"],
+  ["215", "17"]
+]
+
+Process all rows top-to-bottom in each image. Maintain exact sequence.
+Serial numbers should be sequential integers.
                         """
                     }
                 ]
@@ -218,10 +244,23 @@ Example output: {{"page-004": ["12", "34/A"], "page-005": ["5-B", "", "123"]}}
                 
                 content = completion.choices[0].message.content
                 
+                # Save raw AI response for debugging (before any processing)
+                # This helps debug TOML parsing issues and verify AI output format
+                raw_response_debug = {
+                    "raw_response": content,
+                    "image_count": len(image_paths),
+                    "pages": list(set(page_ids)),
+                    "timestamp": elapsed
+                }
+                # Save to debug output - using first page_id as filename base
+                if page_ids:
+                    debug_filename = f"ai_raw_response_{page_ids[0]}_batch"
+                    self.save_debug_info(debug_filename, raw_response_debug)
+                
                 # Strip markdown code blocks if present
                 content = content.strip()
                 if content.startswith("```"):
-                    # Remove opening ```json or ``` 
+                    # Remove opening ```toml or ``` 
                     lines = content.split('\n')
                     if lines[0].startswith("```"):
                         lines = lines[1:]
@@ -230,48 +269,57 @@ Example output: {{"page-004": ["12", "34/A"], "page-005": ["5-B", "", "123"]}}
                         lines = lines[:-1]
                     content = '\n'.join(lines).strip()
                 
-                # Parse JSON - expect page-wise object: {"page-004": ["12", "34/A"], ...}
+                # Parse TOML - expect page-wise sections with voter_records arrays
                 try:
-                    data = json.loads(content)
+                    import toml
+                    data = toml.loads(content)
                     
                     results_dict = {}
                     
-                    # Handle page-wise format (preferred)
-                    if isinstance(data, dict) and all(isinstance(v, list) for v in data.values()):
-                        # Page-wise format: {"page-004": ["12", "34"], "page-005": ["56"]}
-                        for page_id, house_numbers in data.items():
-                            page_results = []
-                            for house_no in house_numbers:
+                    # Iterate through page sections
+                    # Expected format:
+                    # {
+                    #   "page-004": {"voter_records": [["EPIC1", "12"], ["EPIC2", "34"]]},
+                    #   "page-005": {"voter_records": [["214", "56"]]}
+                    # }
+                    for page_id, page_data in data.items():
+                        if not isinstance(page_data, dict):
+                            continue
+                        
+                        voter_records = page_data.get("voter_records", [])
+                        if not isinstance(voter_records, list):
+                            continue
+                        
+                        page_results = []
+                        for record in voter_records:
+                            if isinstance(record, list) and len(record) >= 2:
+                                serial_no = str(record[0]).strip()
+                                house_no = str(record[1]).strip()
                                 page_results.append(IdExtractionResult(
-                                    house_no=str(house_no).strip()
+                                    serial_no=serial_no,
+                                    house_no=house_no
                                 ))
-                            results_dict[page_id] = page_results
-                            
+                            elif isinstance(record, list) and len(record) == 1:
+                                # Fallback: only one field provided, assume it's house_no
+                                page_results.append(IdExtractionResult(
+                                    serial_no="",
+                                    house_no=str(record[0]).strip()
+                                ))
+                        
+                        results_dict[page_id] = page_results
+                    
+                    if results_dict:
                         total_extracted = sum(len(v) for v in results_dict.values())
-                        self.log_info(f"Extracted {total_extracted} house numbers from {len(image_paths)} images across {len(results_dict)} pages in {elapsed:.2f}s")
+                        self.log_info(f"Extracted {total_extracted} voter records from {len(image_paths)} images across {len(results_dict)} pages in {elapsed:.2f}s")
                         return results_dict
-                    
-                    # Fallback: simple array format (distribute to first page_id)
-                    elif isinstance(data, list):
-                        house_numbers = data
-                        results = []
-                        for house_no in house_numbers:
-                            results.append(IdExtractionResult(
-                                house_no=str(house_no).strip()
-                            ))
-                        # Assign all results to first page
-                        if page_ids:
-                            results_dict[page_ids[0]] = results
-                        self.log_info(f"Extracted {len(results)} house numbers from {len(image_paths)} images in {elapsed:.2f}s")
-                        return results_dict
-                    
                     else:
-                        self.log_error(f"Unexpected JSON format: {type(data)}")
+                        self.log_error(f"No valid page data found in TOML response")
                         return {}
                     
-                except json.JSONDecodeError:
-                    self.log_error(f"Failed to parse AI response as JSON: {content[:100]}...")
-                    # Don't retry on parsing errors as the model output is likely deterministic or the issue is with the response handling
+                except Exception as e:
+                    self.log_error(f"Failed to parse AI response as TOML: {e}")
+                    self.log_debug(f"Response content (first 200 chars): {content[:200]}...")
+                    # Don't retry on parsing errors as the model output is likely deterministic
                     return {}
                     
             except Exception as e:

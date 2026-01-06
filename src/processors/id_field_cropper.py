@@ -1,10 +1,14 @@
 """
 ID Field Cropper processor.
 
-Crops house_no from voter images.
+Crops Serial Number and house_no from voter images for AI processing.
 
-ROI:
-HOUSE_ROI = (0.303532, 0.410835, 0.728477, 0.559819)
+This creates a horizontally stitched image: [Serial Number] [Separator] [House Number]
+The AI will use Serial Number as a reference to maintain proper sequence alignment.
+
+Updated ROIs (measured from actual voter images):
+SERIAL_NO_ROI = (0.200883, 0.014433, 0.367550, 0.135440)
+HOUSE_ROI = (0.306843, 0.425564, 0.491170, 0.538425)
 """
 
 from __future__ import annotations
@@ -25,9 +29,14 @@ from ..logger import get_logger
 logger = get_logger("id_field_cropper")
 
 
-# Field ROI - House Number only
+# Field ROI - Serial Number and House Number (for AI processing)
 # Format: (x1_frac, y1_frac, x2_frac, y2_frac)
-HOUSE_ROI = (0.303532, 0.410835, 0.65, 0.559819)
+# Measured from actual voter images
+SERIAL_NO_ROI = (0.200883, 0.014433, 0.367550, 0.135440)
+EPIC_ROI = (0.464680, 0.011625, 0.845475, 0.167043)  # Not used, kept for reference
+HOUSE_ROI = (0.306843, 0.425564, 0.491170, 0.538425)
+STITCH_SPACING = 15  # Pixels between serial and house regions
+STITCH_BG_COLOR = 255  # White background
 
 
 @dataclass
@@ -137,7 +146,14 @@ class IdFieldCropper(BaseProcessor):
         return True
 
     def _process_image(self, img_path: Path, output_dir: Path) -> IdCropResult:
-        """Process a single voter image."""
+        """
+        Process a single voter image.
+        
+        Extracts Serial Number and House Number ROIs and stitches them horizontally:
+        [Serial Number] [Separator] [House Number]
+        
+        This allows AI to use Serial Number as a reference point for proper sequence alignment.
+        """
         try:
             # Read image
             img = cv2.imdecode(
@@ -150,25 +166,70 @@ class IdFieldCropper(BaseProcessor):
             
             H, W = img.shape[:2]
             
+            # Extract Serial Number ROI
+            serial_x1 = int(W * SERIAL_NO_ROI[0])
+            serial_y1 = int(H * SERIAL_NO_ROI[1])
+            serial_x2 = int(W * SERIAL_NO_ROI[2])
+            serial_y2 = int(H * SERIAL_NO_ROI[3])
+            
+            # Clamp serial coordinates
+            serial_x1, serial_y1 = max(0, serial_x1), max(0, serial_y1)
+            serial_x2, serial_y2 = min(W, serial_x2), min(H, serial_y2)
+            
+            serial_crop = img[serial_y1:serial_y2, serial_x1:serial_x2]
+            
             # Extract house number ROI
-            x1 = int(W * HOUSE_ROI[0])
-            y1 = int(H * HOUSE_ROI[1])
-            x2 = int(W * HOUSE_ROI[2])
-            y2 = int(H * HOUSE_ROI[3])
+            house_x1 = int(W * HOUSE_ROI[0])
+            house_y1 = int(H * HOUSE_ROI[1])
+            house_x2 = int(W * HOUSE_ROI[2])
+            house_y2 = int(H * HOUSE_ROI[3])
             
-            # Clamp coordinates
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(W, x2), min(H, y2)
+            # Clamp house coordinates
+            house_x1, house_y1 = max(0, house_x1), max(0, house_y1)
+            house_x2, house_y2 = min(W, house_x2), min(H, house_y2)
             
-            house_crop = img[y1:y2, x1:x2]
+            house_crop = img[house_y1:house_y2, house_x1:house_x2]
             
-            # Validate crop
+            # Validate crops
+            if serial_crop.size == 0:
+                return IdCropResult(img_path.name, error="Invalid Serial Number ROI dimensions")
             if house_crop.size == 0:
-                 return IdCropResult(img_path.name, error="Invalid house number ROI dimensions")
+                return IdCropResult(img_path.name, error="Invalid house number ROI dimensions")
+            
+            # Stitch Serial and House horizontally: [Serial] [Separator] [House]
+            serial_h, serial_w = serial_crop.shape[:2]
+            house_h, house_w = house_crop.shape[:2]
+            max_h = max(serial_h, house_h)
+            
+            # Pad Serial vertically to match height
+            if serial_h < max_h:
+                top = (max_h - serial_h) // 2
+                bottom = max_h - serial_h - top
+                serial_crop = np.vstack([
+                    np.full((top, serial_w), STITCH_BG_COLOR, dtype=np.uint8),
+                    serial_crop,
+                    np.full((bottom, serial_w), STITCH_BG_COLOR, dtype=np.uint8)
+                ])
+            
+            # Pad house vertically to match height
+            if house_h < max_h:
+                top = (max_h - house_h) // 2
+                bottom = max_h - house_h - top
+                house_crop = np.vstack([
+                    np.full((top, house_w), STITCH_BG_COLOR, dtype=np.uint8),
+                    house_crop,
+                    np.full((bottom, house_w), STITCH_BG_COLOR, dtype=np.uint8)
+                ])
+            
+            # Create horizontal separator/spacer
+            spacer = np.full((max_h, STITCH_SPACING), STITCH_BG_COLOR, dtype=np.uint8)
+            
+            # Stitch together: [Serial] [Spacer] [House]
+            stitched = np.hstack([serial_crop, spacer, house_crop])
             
             # Save
             output_path = output_dir / img_path.name
-            success, encoded = cv2.imencode(".png", house_crop)
+            success, encoded = cv2.imencode(".png", stitched)
             if success:
                 encoded.tofile(str(output_path))
                 return IdCropResult(img_path.name, output_path=output_path)

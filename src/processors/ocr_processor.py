@@ -468,44 +468,70 @@ class OCRProcessor(BaseProcessor):
             
             # Load AI ID extracted results for this page if available
             ai_id_map = {}
+            page_ai_results_raw = []
             if self.ai_id_processor:
-                 page_ai_results = self.ai_id_processor.get_results_for_page(page_id)
-                 if page_ai_results:
-                     self.log_info(f"Using {len(page_ai_results)} AI extracted ID records for page {page_id}")
-                     # Assuming order is preserved: item N corresponds to voter N on the page
-                     for idx, res in enumerate(page_ai_results, start=1):
-                         ai_id_map[idx] = res
+                 page_ai_results_raw = self.ai_id_processor.get_results_for_page(page_id)
+                 if page_ai_results_raw:
+                     self.log_info(f"AI extracted {len(page_ai_results_raw)} house numbers for page {page_id}")
 
             for batch_path in batch_images:
                 batch_records = self._process_batch_image(batch_path, page_id, voter_end_template)
-                
-                # Merge AI ID data if available
-                if ai_id_map:
-                    # Determine global index for this batch
-                    # batch_records contains results for voters in this batch
-                    # We need to map them to the page-level index
-                    # Assuming batch execution order matches
-                    start_idx = len(page_records) + 1 
-                    for i, record in enumerate(batch_records):
-                        current_idx = start_idx + i
-                        if current_idx in ai_id_map:
-                            ai_res = ai_id_map[current_idx]
-                            
-                            # Update house_no with AI result if it's valid
-                            # AI is more accurate, but we need to validate first to avoid
-                            # overwriting valid OCR with empty/invalid AI results (e.g., Tamil text)
-                            if ai_res.house_no and self._is_valid_house_number(ai_res.house_no):
-                                record.house_no = ai_res.house_no
-                            elif ai_res.house_no and not self._is_valid_house_number(ai_res.house_no):
-                                # Log when AI gives invalid result so we can keep OCR
-                                self.log_debug(f"AI house_no '{ai_res.house_no}' is invalid, keeping OCR result '{record.house_no}'")
-                                
                 page_records.extend(batch_records)
                 total_batches += 1
             
+            # Now that we have all page_records, apply AI house number mapping
+            # AI should take precedence over OCR when available and valid
+            if page_ai_results_raw:
+                # Check if AI results match the number of actual voters
+                num_voters = len(page_records)
+                num_ai_results = len(page_ai_results_raw)
+                
+                if num_ai_results > num_voters:
+                    self.log_warning(
+                        f"AI extracted {num_ai_results} house numbers but only {num_voters} voters found on {page_id}. "
+                        f"Using first {num_voters} AI results."
+                    )
+                    # Truncate AI results to match voter count
+                    page_ai_results = page_ai_results_raw[:num_voters]
+                elif num_ai_results < num_voters:
+                    self.log_warning(
+                        f"AI extracted only {num_ai_results} house numbers but {num_voters} voters found on {page_id}. "
+                        f"OCR will be used for voters beyond index {num_ai_results}."
+                    )
+                    page_ai_results = page_ai_results_raw
+                else:
+                    # Perfect match
+                    page_ai_results = page_ai_results_raw
+                    self.log_info(f"AI results perfectly match {num_voters} voters on {page_id}")
+                
+                # Apply AI house numbers (prefer AI over OCR)
+                ai_applied_count = 0
+                ai_invalid_count = 0
+                for idx, ai_res in enumerate(page_ai_results):
+                    if idx < len(page_records):
+                        record = page_records[idx]
+                        
+                        # Prefer AI over OCR if valid
+                        if ai_res.house_no and self._is_valid_house_number(ai_res.house_no):
+                            record.house_no = ai_res.house_no
+                            ai_applied_count += 1
+                            self.log_debug(f"Applied AI house_no '{ai_res.house_no}' to voter {idx+1} on {page_id}")
+                        elif ai_res.house_no:
+                            # AI gave invalid result, keep OCR
+                            ai_invalid_count += 1
+                            self.log_debug(
+                                f"AI house_no '{ai_res.house_no}' is invalid for voter {idx+1}, "
+                                f"keeping OCR result '{record.house_no}'"
+                            )
+                
+                self.log_info(
+                    f"Applied {ai_applied_count} AI house numbers on {page_id} "
+                    f"({ai_invalid_count} AI results were invalid)"
+                )
+            
             page_time = time.perf_counter() - page_start_time
             merged_count = sum(1 for r in page_records if r.epic_valid and r.epic_no)
-            self.log_info(f"Completed page {page_id}: {len(page_records)} voters (AI merged: {len(ai_id_map) if ai_id_map else 0} records)")
+            self.log_info(f"Completed page {page_id}: {len(page_records)} voters")
             
             result = PageOCRResult(
                 page_id=page_id,
