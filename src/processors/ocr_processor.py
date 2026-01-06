@@ -504,29 +504,32 @@ class OCRProcessor(BaseProcessor):
                     page_ai_results = page_ai_results_raw
                     self.log_info(f"AI results perfectly match {num_voters} voters on {page_id}")
                 
-                # Apply AI house numbers (prefer AI over OCR)
+                # Apply AI house numbers - ALWAYS prefer AI over OCR when AI provides a value
+                # AI has higher accuracy for house numbers, especially with Tamil letters
                 ai_applied_count = 0
-                ai_invalid_count = 0
+                ocr_fallback_count = 0
                 for idx, ai_res in enumerate(page_ai_results):
                     if idx < len(page_records):
                         record = page_records[idx]
+                        ocr_value = record.house_no  # Save original OCR value for logging
                         
-                        # Prefer AI over OCR if valid
-                        if ai_res.house_no and self._is_valid_house_number(ai_res.house_no):
-                            record.house_no = ai_res.house_no
+                        # Always use AI value if provided (non-empty)
+                        if ai_res.house_no and ai_res.house_no.strip():
+                            record.house_no = ai_res.house_no.strip()
                             ai_applied_count += 1
-                            self.log_debug(f"Applied AI house_no '{ai_res.house_no}' to voter {idx+1} on {page_id}")
-                        elif ai_res.house_no:
-                            # AI gave invalid result, keep OCR
-                            ai_invalid_count += 1
+                            if ocr_value != record.house_no:
+                                self.log_debug(f"Applied AI house_no '{ai_res.house_no}' to voter {idx+1} on {page_id} (OCR was '{ocr_value}')")
+                        else:
+                            # AI gave empty result, keep OCR as fallback
+                            ocr_fallback_count += 1
                             self.log_debug(
-                                f"AI house_no '{ai_res.house_no}' is invalid for voter {idx+1}, "
+                                f"AI house_no empty for voter {idx+1}, "
                                 f"keeping OCR result '{record.house_no}'"
                             )
                 
                 self.log_info(
                     f"Applied {ai_applied_count} AI house numbers on {page_id} "
-                    f"({ai_invalid_count} AI results were invalid)"
+                    f"({ocr_fallback_count} used OCR fallback)"
                 )
             
             page_time = time.perf_counter() - page_start_time
@@ -2528,9 +2531,10 @@ class OCRProcessor(BaseProcessor):
         # Convert Tamil digits first
         txt = convert_tamil_digits(txt)
         
-        # Clean house value - preserve letters and numbers
+        # Clean house value - preserve Tamil letters, Latin letters and numbers
         s = txt.upper()
-        s = re.sub(r"[^A-Z0-9/\-\s]", " ", s)
+        # Preserve Tamil characters (\u0B80-\u0BFF) along with A-Z, 0-9, /, -, and spaces
+        s = re.sub(r"[^A-Z0-9\u0B80-\u0BFF/\-\s]", " ", s)
         
         # Clean the result using the smarter function
         return self._clean_house_number(s)
@@ -2539,16 +2543,19 @@ class OCRProcessor(BaseProcessor):
         """
         Clean and correct OCR'd house number text.
         
-        Optimized for 'process as is':
-        - Minimal aggressive regex replacement
-        - Fixes obvious OCR digit errors (O->0, I->1) if seemingly numeric
-        - Preserves alphanumeric patterns "11-A", "D35-1"
+        Requirements:
+        - Must contain at least one digit
+        - Can contain Tamil letters, Latin letters, digits
+        - Allowed special characters: /, -
+        - Fixes obvious OCR digit errors (O->0, I->1)
+        - Preserves alphanumeric patterns like "11-A", "D35-1", "6வ283"
         """
         if not raw_text:
             return ""
         
         # Basic cleanup of noise chars that are definitely not part of house no
-        text = raw_text.strip(" .,:;()[]{}'\"")
+        noise_chars = ' .,:;()[]{}\'"'
+        text = raw_text.strip(noise_chars)
         
         # Split by likely separators to handle "House No: 123" if extracted loosely
         # We assume the extraction logic passed us the value part, but just in case
@@ -2570,19 +2577,34 @@ class OCRProcessor(BaseProcessor):
         # Apply digit fixes (O->0, I->1)
         fixed_token = self._fix_ocr_digits(best_token)
         
-        # Remove common prefix noise that OCR adds (like single letters before digits)
-        # e.g. "L123" -> "123", but "D123" should stay "D123"
-        # This is tricky. User wants "process as is".
+        # Convert to uppercase for Latin letters (Tamil characters remain unchanged)
+        # This ensures both 'a' and 'A' are treated the same
+        fixed_token = fixed_token.upper()
         
         # Check if it matches a broad house number pattern
-        # Allowed: Uppercase Letters, Digits, /, -
-        if re.match(r"^[A-Z0-9/\-]+$", fixed_token):
-             return fixed_token
+        # Allowed: Uppercase Letters, Tamil Letters (Unicode \u0B80-\u0BFF), Digits, /, -
+        # Pattern allows Tamil characters in addition to A-Z
+        if re.match(r"^[A-Z0-9\u0B80-\u0BFF/\-]+$", fixed_token):
+            # Must contain at least one digit
+            if any(c.isdigit() for c in fixed_token):
+                return fixed_token
+            else:
+                # No digits found, invalid house number
+                return ""
         
-        # If not, try to strip non-allowed chars
-        cleaned = re.sub(r"[^A-Z0-9/\-]", "", fixed_token)
+        # If not matching pattern, try to strip non-allowed chars
+        # Keep Tamil characters, Latin letters (both cases), digits, /, -
+        # Include both A-Z and a-z to catch any remaining lowercase before final uppercase conversion
+        cleaned = re.sub(r"[^A-Za-z0-9\u0B80-\u0BFF/\-]", "", fixed_token)
+        # Convert to uppercase for consistency
+        cleaned = cleaned.upper()
         
-        return cleaned
+        # Ensure at least one digit is present
+        if cleaned and any(c.isdigit() for c in cleaned):
+            return cleaned
+        else:
+            # No digits found, invalid house number
+            return ""
     
     def _is_valid_house_number(self, house_no: str) -> bool:
         """
@@ -2591,11 +2613,13 @@ class OCRProcessor(BaseProcessor):
         A valid house number must:
         - Not be empty
         - Contain at least one digit (to avoid pure Tamil text like "வீட்டு")
-        - Only contain allowed characters (alphanumeric, -, /, spaces, parentheses)
+        - Only contain allowed characters including Tamil letters
         
         Examples of valid formats:
         - "2", "2A", "2-12", "2/12"
         - "6 (2)", "2 (A)", "10 (1A)"
+        - "1ஏ", "5ஏ" (Tamil letter suffix)
+        - "1,ராஜபாளையம்" (Tamil place name with comma)
         
         Returns:
             True if valid, False otherwise
@@ -2607,9 +2631,9 @@ class OCRProcessor(BaseProcessor):
         if not any(c.isdigit() for c in house_no):
             return False
         
-        # Should only contain alphanumeric, -, /, spaces, and parentheses
-        # This filters out Tamil characters and other invalid chars
-        if not re.match(r"^[A-Za-z0-9/\-\s\(\)]+$", house_no.strip()):
+        # Should only contain alphanumeric (including Tamil letters), -, /, spaces, parentheses, and commas
+        # Tamil Unicode range: \u0B80-\u0BFF
+        if not re.match(r"^[A-Za-z0-9\u0B80-\u0BFF/\-\s\(\),]+$", house_no.strip()):
             return False
         
         return True

@@ -68,6 +68,7 @@ psycopg2-binary>=2.9.9    # PostgreSQL adapter
 # =========================
 # Utilities
 # =========================
+toml>=0.10.2              # TOML parser for AI response parsing
 
 
 # =========================

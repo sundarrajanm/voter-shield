@@ -11,3 +11,4 @@ todo/
 done/
 extraction_completed/
 *.tar
+test_*

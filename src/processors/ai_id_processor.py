@@ -227,7 +227,7 @@ Serial numbers should be sequential integers.
                     model=self.model,
                     messages=messages,
                     temperature=0,
-                    max_completion_tokens=1024  # Reduced from 4096 since we only need simple array
+                    max_completion_tokens=4096  # Increased to handle larger batches (5 pages × 30 voters)
                 )
                 
                 elapsed = time.perf_counter() - start_time
