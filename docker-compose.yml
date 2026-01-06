@@ -1,0 +1,14 @@
+# version: '3.8'
+
+services:
+  app:
+    image: voter-shield-app
+    build: .
+    volumes:
+      - ./pdfs:/app/pdfs
+      - ./extracted:/app/extracted
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1

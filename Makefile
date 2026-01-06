@@ -4,8 +4,7 @@ include config.mk
 
 setup:
 	pip install -r requirements.txt
-	pip install -r requirements-dev.txt
-
+	
 unit:
 	pytest -m "not regression" -v -s
 
@@ -15,7 +14,7 @@ run: unit
 check-quality:
 	./scripts/quality.sh
 
-build: unit
+build:
 	docker build -t $(IMAGE) .
 
 build-on-mac: unit
@@ -38,7 +37,7 @@ clean:
 ### AWS ECR Related Targets ###
 
 # can be comma separated list of S3 paths for multiple booths!
-DRY_RUN_S3_INPUT=s3://264676382451-eci-download/dry-run/2025-EROLLGEN-S22-116-FinalRoll-Revision1-ENG-244-WI.pdf
+DRY_RUN_S3_INPUT=s3://264676382451-eci-download/sample/sample_tamil.pdf
 DRY_RUN_S3_OUTPUT=s3://264676382451-eci-download/dry-run
 
 ecr-login:
@@ -57,8 +56,8 @@ run-fargate:
 run-fargate-dry-run:
 	./scripts/run-fargate.sh \
 	  --s3-input "$(DRY_RUN_S3_INPUT)" \
-	  # --s3-output "$(DRY_RUN_S3_OUTPUT)" # Enable this after write permissions are granted
-
+	  --s3-output "$(DRY_RUN_S3_OUTPUT)" \
+	  --output-identifier "DRYRUN_TAM_S22_AC-116_1"
 dry-run:
 	python main.py --s3-input "$(DRY_RUN_S3_INPUT)" --s3-output "$(DRY_RUN_S3_OUTPUT)"
 

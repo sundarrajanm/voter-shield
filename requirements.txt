@@ -1,5 +1,78 @@
-pdf2image==1.17.0
-pytesseract==0.3.13
-pytest==9.0.2
-rich==14.2.0
-boto3==1.42.16
+# Electoral Roll PDF Processing - Dependencies
+# Install: pip install -r requirements.txt
+
+# =========================
+# PDF Processing
+# =========================
+PyMuPDF>=1.24.0           # PDF to image extraction (import as fitz)
+
+# =========================
+# Image Processing
+# =========================
+opencv-python>=4.9.0      # Image manipulation, cropping, preprocessing
+numpy>=1.26.0             # Array operations for image processing
+Pillow>=10.2.0            # Image loading
+
+# =========================
+# OCR - Tamil OCR (Primary)
+# =========================
+# ocr-tamil>=0.4.0          # Tamil OCR with CRAFT text detection
+                          # https://github.com/gnana70/tamil_ocr
+                          # Supports Tamil + English
+                          # Faster and more accurate for Tamil text than Tesseract
+
+# =========================
+# OCR - Tesseract (Fallback)
+# =========================
+pytesseract>=0.3.10       # Python wrapper for Tesseract OCR
+
+# IMPORTANT:
+# Tesseract OCR engine must be installed separately,
+# AND Tamil trained data (tam.traineddata) MUST be installed.
+
+# OS-specific installation:
+# --------------------------------
+# Windows:
+#   1. Install Tesseract from:
+#      https://github.com/UB-Mannheim/tesseract/wiki
+#   2. During installation, enable "Tamil" language
+#      OR manually place tam.traineddata in:
+#      C:\Program Files\Tesseract-OCR\tessdata\
+
+# Linux (Ubuntu/Debian):
+#   sudo apt-get install tesseract-ocr tesseract-ocr-tam
+
+# macOS (Homebrew):
+#   brew install tesseract tesseract-lang
+
+# Manual Tamil traineddata download (if needed):
+#   https://github.com/tesseract-ocr/tessdata/blob/main/tam.traineddata
+#   Place file inside TESSDATA_PREFIX/tessdata directory
+
+# =========================
+# AI Integration (Metadata Extraction)
+# =========================
+openai>=1.12.0            # OpenAI-compatible API client (works with Gemini too)
+groq>=0.4.0               # Groq API client
+
+# =========================
+# AWS S3 Integration
+# =========================
+boto3>=1.34.0             # AWS SDK for Python (S3 operations)
+
+# =========================
+# Database Integration
+# =========================
+psycopg2-binary>=2.9.9    # PostgreSQL adapter
+
+# =========================
+# Utilities
+# =========================
+
+
+# =========================
+# Development (Optional)
+# =========================
+# pytest>=8.0.0           # Testing
+# black>=24.0.0           # Code formatting
+# ruff>=0.2.0             # Linting

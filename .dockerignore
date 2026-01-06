@@ -1,0 +1,14 @@
+pdfs/
+extract/
+extracted/
+extraction_completed/
+logs/
+done/
+pdf_all/
+og_images/
+__pycache__/
+*.pyc
+.git/
+.env
+.DS_Store
+venv/
