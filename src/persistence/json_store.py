@@ -365,7 +365,7 @@ class JSONStore:
                 "age": r.get("age", ""),
                 "gender": r.get("gender", ""),
                 "house_no": r.get("house_no", ""),
-                "street_names_and_numbers": r.get("street") or r.get("section_number_and_name", ""),
+                "street_names_and_numbers": r.get("street") or r.get("street_name_and_number") or r.get("section_number_and_name", ""),
                 "part_no": r.get("part_number", ""),
                 "assembly": r.get("assembly_constituency_number_and_name", ""),
                 "deleted": r.get("deleted", "")

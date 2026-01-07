@@ -13,8 +13,8 @@ from typing import Optional, List, Any
 @dataclass
 class Section:
     """A section within a polling area."""
-    section_number: str = ""
-    section_name: str = ""
+    street_number: str = ""
+    street_name: str = ""
 
 
 @dataclass
@@ -254,8 +254,8 @@ class DocumentMetadata:
         
         sections = [
             Section(
-                section_number=str(s.get("section_number", "")),
-                section_name=s.get("section_name", "")
+                street_number=str(s.get("street_number", s.get("section_number", ""))),
+                street_name=s.get("street_name", s.get("section_name", ""))
             )
             for s in poll_data.get("sections") or [] if s
         ]

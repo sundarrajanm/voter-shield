@@ -343,7 +343,7 @@ class PostgresRepository:
             other = "" # Logic for other? CSV sets it empty.
             
             # Context fields
-            street = page.section_number_and_name
+            street = page.street_name_and_number
             part_no = str(page.part_number) if page.part_number else ""
             assembly = page.assembly_constituency_number_and_name
             

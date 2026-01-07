@@ -33,7 +33,7 @@ class PageData:
     
     # Page header metadata (extracted from top section)
     assembly_constituency_number_and_name: str = ""  # e.g., "116-SULUR"
-    section_number_and_name: str = ""  # e.g., "1-Karupparayan Kovil Street Ward No-9"
+    street_name_and_number: str = ""  # e.g., "1-Karupparayan Kovil Street Ward No-9"
     part_number: Optional[int] = None  # e.g., 244
     
     # Voters on this page (in order)
@@ -57,7 +57,7 @@ class PageData:
             "page_number": self.page_number,
             "image_path": self.image_path,
             "assembly_constituency_number_and_name": self.assembly_constituency_number_and_name,
-            "section_number_and_name": self.section_number_and_name,
+            "street_name_and_number": self.street_name_and_number,
             "part_number": self.part_number,
             "crops_count": self.crops_count,
             "voters_count": self.voters_count,
@@ -144,7 +144,7 @@ class ProcessedDocument:
             voters: List of Voter objects
             header_data: Optional dict mapping page_id to header info with keys:
                 - assembly_constituency_number_and_name
-                - section_number_and_name
+                - street_name_and_number
                 - part_number
         """
         from collections import defaultdict
@@ -187,11 +187,11 @@ class ProcessedDocument:
                 # Support both dict and dataclass-like objects
                 if hasattr(page_header, 'assembly_constituency_number_and_name'):
                     assembly_info = page_header.assembly_constituency_number_and_name or ""
-                    section_info = page_header.section_number_and_name or ""
+                    section_info = getattr(page_header, 'street_name_and_number', getattr(page_header, 'section_number_and_name', "")) or ""
                     part_num = page_header.part_number
                 elif isinstance(page_header, dict):
                     assembly_info = page_header.get('assembly_constituency_number_and_name', "")
-                    section_info = page_header.get('section_number_and_name', "")
+                    section_info = page_header.get('street_name_and_number', page_header.get('section_number_and_name', ""))
                     part_num = page_header.get('part_number')
             
             # Get timing from stats
@@ -205,7 +205,7 @@ class ProcessedDocument:
                 voters=page_voters,
                 crops_count=len(page_voters),
                 assembly_constituency_number_and_name=assembly_info,
-                section_number_and_name=section_info,
+                street_name_and_number=section_info,
                 part_number=part_num,
                 processing_time_sec=proc_time,
             )
@@ -267,7 +267,7 @@ class ProcessedDocument:
             for voter in page.voters:
                 voter_dict = voter.to_dict()
                 voter_dict["assembly_constituency_number_and_name"] = page.assembly_constituency_number_and_name
-                voter_dict["section_number_and_name"] = page.section_number_and_name
+                voter_dict["street_name_and_number"] = page.street_name_and_number
                 voter_dict["part_number"] = page.part_number
                 all_records.append(voter_dict)
         
@@ -313,7 +313,7 @@ class ProcessedDocument:
                     "voters_count": p.voters_count,
                     "processing_time_sec": round(p.processing_time_sec, 4),
                     "assembly_constituency_number_and_name": p.assembly_constituency_number_and_name,
-                    "section_number_and_name": p.section_number_and_name,
+                    "street_name_and_number": p.street_name_and_number,
                     "part_number": p.part_number,
                 }
                 for p in self.pages

@@ -56,7 +56,7 @@ class PageHeaderInfo:
     """Extracted header information from a page."""
     page_id: str
     assembly_constituency_number_and_name: str = ""
-    section_number_and_name: str = ""
+    street_name_and_number: str = ""
     part_number: Optional[int] = None
     header_image_path: Optional[Path] = None
     raw_text: str = ""
@@ -237,7 +237,7 @@ class HeaderExtractor(BaseProcessor):
         return PageHeaderInfo(
             page_id=page_id,
             assembly_constituency_number_and_name=assembly_info,
-            section_number_and_name=section_info,
+            street_name_and_number=section_info,
             part_number=part_num,
             header_image_path=header_path,
             raw_text=raw_text,
