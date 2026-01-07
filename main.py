@@ -985,7 +985,16 @@ def main() -> int:
         # 1. Handle explicit --s3-input
         if args.s3_input:
             logger.info("Processing S3 input files...")
-            for s3_url in args.s3_input:
+            
+            # Handle potential comma-separated values in the input list
+            all_s3_urls = []
+            for item in args.s3_input:
+                for url in item.split(','):
+                    url = url.strip()
+                    if url:
+                        all_s3_urls.append(url)
+            
+            for s3_url in all_s3_urls:
                 try:
                     # Download to default S3 download dir or temp
                     dl_path = download_from_s3(s3_url, config.s3)
