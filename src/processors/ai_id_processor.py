@@ -162,39 +162,35 @@ class AIIdProcessor(BaseProcessor):
                     {
                         "type": "text", 
                         "text": f"""
-Extract serial numbers and house numbers from electoral roll ID strip images.
+Extract serial and house numbers from electoral roll ID strips.
 
-Each image shows multiple horizontal strips with serial number on the left and house number on the right.
+Images: {mapping_desc}
 
-Images belong to: {mapping_desc}
-
-Return data in TOML format with page-wise arrays. Use "" for empty/illegible fields.
-DO NOT use markdown code blocks. Return raw TOML only.
+Return TOML format. NO markdown blocks. Use "" for empty fields.
 
 Format:
 [page-XXX]
-voter_records = [
+records = [
   ["serial1", "house1"],
-  ["serial2", "house2"],
-  ["serial3", "house3"]
+  ["serial2", "house2"]
 ]
 
-Example output:
+Example:
 [page-004]
-voter_records = [
+records = [
   ["211", "12"],
   ["212", "34/A"],
   ["213", "5-B"]
 ]
 
 [page-005]
-voter_records = [
+records = [
   ["214", "16(A)"],
   ["215", "17"]
 ]
 
-Process all rows top-to-bottom in each image. Maintain exact sequence.
-Serial numbers should be sequential integers.
+Extract complete house numbers with all characters (letters, numbers, /, -, parentheses).
+Process top-to-bottom, maintain sequence.
                         """
                     }
                 ]
@@ -244,15 +240,13 @@ Serial numbers should be sequential integers.
                 
                 content = completion.choices[0].message.content
                 
-                # Save raw AI response for debugging (before any processing)
-                # This helps debug TOML parsing issues and verify AI output format
+                # Save raw AI response for debugging
                 raw_response_debug = {
                     "raw_response": content,
                     "image_count": len(image_paths),
                     "pages": list(set(page_ids)),
                     "timestamp": elapsed
                 }
-                # Save to debug output - using first page_id as filename base
                 if page_ids:
                     debug_filename = f"ai_raw_response_{page_ids[0]}_batch"
                     self.save_debug_info(debug_filename, raw_response_debug)
@@ -260,38 +254,43 @@ Serial numbers should be sequential integers.
                 # Strip markdown code blocks if present
                 content = content.strip()
                 if content.startswith("```"):
-                    # Remove opening ```toml or ``` 
                     lines = content.split('\n')
                     if lines[0].startswith("```"):
                         lines = lines[1:]
-                    # Remove closing ```
                     if lines and lines[-1].strip() == "```":
                         lines = lines[:-1]
                     content = '\n'.join(lines).strip()
                 
-                # Parse TOML - expect page-wise sections with voter_records arrays
+                # Parse TOML with improved validation
                 try:
                     import toml
                     data = toml.loads(content)
                     
                     results_dict = {}
                     
-                    # Iterate through page sections
-                    # Expected format:
-                    # {
-                    #   "page-004": {"voter_records": [["EPIC1", "12"], ["EPIC2", "34"]]},
-                    #   "page-005": {"voter_records": [["214", "56"]]}
-                    # }
+                    # Validate structure
+                    if not isinstance(data, dict):
+                        self.log_error(f"AI response is not a valid TOML object, got: {type(data)}")
+                        return {}
+                    
                     for page_id, page_data in data.items():
-                        if not isinstance(page_data, dict):
+                        # Skip non-page keys
+                        if not page_id.startswith("page-"):
+                            self.log_warning(f"Skipping non-page key: {page_id}")
                             continue
                         
-                        voter_records = page_data.get("voter_records", [])
+                        if not isinstance(page_data, dict):
+                            self.log_warning(f"Page data for {page_id} is not a dict, skipping")
+                            continue
+                        
+                        # Look for 'records' key (new format) or 'voter_records' (legacy)
+                        voter_records = page_data.get("records") or page_data.get("voter_records", [])
                         if not isinstance(voter_records, list):
+                            self.log_warning(f"Records for {page_id} is not a list, skipping")
                             continue
                         
                         page_results = []
-                        for record in voter_records:
+                        for idx, record in enumerate(voter_records):
                             if isinstance(record, list) and len(record) >= 2:
                                 serial_no = str(record[0]).strip()
                                 house_no = str(record[1]).strip()
@@ -300,13 +299,21 @@ Serial numbers should be sequential integers.
                                     house_no=house_no
                                 ))
                             elif isinstance(record, list) and len(record) == 1:
-                                # Fallback: only one field provided, assume it's house_no
+                                # Fallback: only house_no provided
                                 page_results.append(IdExtractionResult(
                                     serial_no="",
                                     house_no=str(record[0]).strip()
                                 ))
+                            else:
+                                self.log_warning(f"Invalid record format in {page_id} at index {idx}: {record}")
                         
-                        results_dict[page_id] = page_results
+                        # Only add to DICT if we got valid data for THIS page
+                        if page_results:
+                            results_dict[page_id] = page_results
+                            self.log_debug(f"Extracted {len(page_results)} records for {page_id}")
+                        else:
+                            # Empty results for this page - don't carry over from previous page
+                            self.log_warning(f"No valid records extracted for {page_id}")
                     
                     if results_dict:
                         total_extracted = sum(len(v) for v in results_dict.values())
@@ -318,8 +325,7 @@ Serial numbers should be sequential integers.
                     
                 except Exception as e:
                     self.log_error(f"Failed to parse AI response as TOML: {e}")
-                    self.log_debug(f"Response content (first 200 chars): {content[:200]}...")
-                    # Don't retry on parsing errors as the model output is likely deterministic
+                    self.log_debug(f"Response content (first 500 chars): {content[:500]}...")
                     return {}
                     
             except Exception as e:
@@ -336,3 +342,26 @@ Serial numbers should be sequential integers.
 
     def get_results_for_page(self, page_id: str) -> List[IdExtractionResult]:
         return self.page_results.get(page_id, [])
+    
+    def get_global_serial_house_map(self) -> Dict[str, str]:
+        """
+        Get a global mapping of serial_no -> house_no across ALL pages.
+        
+        This is needed because AI may assign records to wrong page IDs,
+        but the serial numbers are usually correct. By using this global map,
+        we can match by serial number regardless of which page the AI thought
+        the record belonged to.
+        
+        Returns:
+            Dict mapping serial_no to house_no
+        """
+        serial_map = {}
+        for page_id, results in self.page_results.items():
+            for result in results:
+                if result.serial_no and result.serial_no.strip():
+                    serial_no = result.serial_no.strip()
+                    # Only add if not already present (prefer earlier entries)
+                    if serial_no not in serial_map:
+                        serial_map[serial_no] = result.house_no.strip() if result.house_no else ""
+        return serial_map
+

@@ -461,6 +461,35 @@ def process_pdf(
         if ai_id_processor.run():
             logger.info("AI ID extraction complete")
             # Keep the processor for OCR step integration
+    elif args.step == "ocr":
+        # For OCR-only runs, try to load existing AI ID data from debug files
+        from src.processors import AIIdProcessor
+        debug_dir = context.output_dir / "debug"
+        if debug_dir.exists():
+            id_extract_files = list(debug_dir.glob("id_extract_page-*.json"))
+            if id_extract_files:
+                logger.info(f"Loading existing AI ID data from {len(id_extract_files)} debug files...")
+                ai_id_processor = AIIdProcessor(context)
+                # Load the data into the processor's page_results
+                import json
+                from src.processors.ai_id_processor import IdExtractionResult
+                for file_path in sorted(id_extract_files):
+                    page_id = file_path.stem.replace("id_extract_", "")
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        results = [
+                            IdExtractionResult(
+                                serial_no=item.get("serial_no", ""),
+                                house_no=item.get("house_no", "")
+                            )
+                            for item in data
+                        ]
+                        ai_id_processor.page_results[page_id] = results
+                    except Exception as e:
+                        logger.warning(f"Failed to load {file_path}: {e}")
+                total_loaded = sum(len(v) for v in ai_id_processor.page_results.values())
+                logger.info(f"Loaded {total_loaded} AI ID records from {len(ai_id_processor.page_results)} pages")
     
     # Step 4: Merge cropped images
     if args.step in ["merge", "all"]:
@@ -723,6 +752,35 @@ def process_extracted_folder(
         ai_id_processor = AIIdProcessor(context)
         if ai_id_processor.run():
             logger.info("AI ID extraction complete")
+    elif args.step == "ocr":
+        # For OCR-only runs, try to load existing AI ID data from debug files
+        from src.processors import AIIdProcessor
+        debug_dir = context.output_dir / "debug"
+        if debug_dir.exists():
+            id_extract_files = list(debug_dir.glob("id_extract_page-*.json"))
+            if id_extract_files:
+                logger.info(f"Loading existing AI ID data from {len(id_extract_files)} debug files...")
+                ai_id_processor = AIIdProcessor(context)
+                # Load the data into the processor's page_results
+                import json
+                from src.processors.ai_id_processor import IdExtractionResult
+                for file_path in sorted(id_extract_files):
+                    page_id = file_path.stem.replace("id_extract_", "")
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        results = [
+                            IdExtractionResult(
+                                serial_no=item.get("serial_no", ""),
+                                house_no=item.get("house_no", "")
+                            )
+                            for item in data
+                        ]
+                        ai_id_processor.page_results[page_id] = results
+                    except Exception as e:
+                        logger.warning(f"Failed to load {file_path}: {e}")
+                total_loaded = sum(len(v) for v in ai_id_processor.page_results.values())
+                logger.info(f"Loaded {total_loaded} AI ID records from {len(ai_id_processor.page_results)} pages")
     
     # Step: Merge cropped images
     if args.step in ["merge", "all"]:

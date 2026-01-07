@@ -453,6 +453,13 @@ class OCRProcessor(BaseProcessor):
         total_voters = 0
         total_batches = 0
         
+        # AI processor available for per-page position-based matching
+        # We will match by position within each page instead of global serial matching
+        # because OCR may extract truncated serial numbers (e.g., "67" instead of "677")
+        has_ai_processor = self.ai_id_processor is not None
+        if has_ai_processor:
+            self.log_info("AI ID processor available for position-based house_no matching")
+        
         for page_dir in page_dirs:
             page_id = page_dir.name
             batch_images = self._get_batch_images(page_dir)
@@ -465,72 +472,68 @@ class OCRProcessor(BaseProcessor):
             
             page_records: List[OCRResult] = []
             page_start_time = time.perf_counter()
-            
-            # Load AI ID extracted results for this page if available
-            ai_id_map = {}
-            page_ai_results_raw = []
-            if self.ai_id_processor:
-                 page_ai_results_raw = self.ai_id_processor.get_results_for_page(page_id)
-                 if page_ai_results_raw:
-                     self.log_info(f"AI extracted {len(page_ai_results_raw)} house numbers for page {page_id}")
 
             for batch_path in batch_images:
                 batch_records = self._process_batch_image(batch_path, page_id, voter_end_template)
                 page_records.extend(batch_records)
                 total_batches += 1
             
-            # Now that we have all page_records, apply AI house number mapping
-            # AI should take precedence over OCR when available and valid
-            if page_ai_results_raw:
-                # Check if AI results match the number of actual voters
-                num_voters = len(page_records)
-                num_ai_results = len(page_ai_results_raw)
+            # Apply AI house numbers and serial numbers by matching POSITION within page
+            # This is more reliable than serial matching because OCR may extract truncated
+            # serial numbers (e.g., "67" instead of "677")
+            if has_ai_processor:
+                ai_page_results = self.ai_id_processor.get_results_for_page(page_id)
                 
-                if num_ai_results > num_voters:
-                    self.log_warning(
-                        f"AI extracted {num_ai_results} house numbers but only {num_voters} voters found on {page_id}. "
-                        f"Using first {num_voters} AI results."
-                    )
-                    # Truncate AI results to match voter count
-                    page_ai_results = page_ai_results_raw[:num_voters]
-                elif num_ai_results < num_voters:
-                    self.log_warning(
-                        f"AI extracted only {num_ai_results} house numbers but {num_voters} voters found on {page_id}. "
-                        f"OCR will be used for voters beyond index {num_ai_results}."
-                    )
-                    page_ai_results = page_ai_results_raw
-                else:
-                    # Perfect match
-                    page_ai_results = page_ai_results_raw
-                    self.log_info(f"AI results perfectly match {num_voters} voters on {page_id}")
-                
-                # Apply AI house numbers - ALWAYS prefer AI over OCR when AI provides a value
-                # AI has higher accuracy for house numbers, especially with Tamil letters
-                ai_applied_count = 0
-                ocr_fallback_count = 0
-                for idx, ai_res in enumerate(page_ai_results):
-                    if idx < len(page_records):
-                        record = page_records[idx]
-                        ocr_value = record.house_no  # Save original OCR value for logging
-                        
-                        # Always use AI value if provided (non-empty)
-                        if ai_res.house_no and ai_res.house_no.strip():
-                            record.house_no = ai_res.house_no.strip()
-                            ai_applied_count += 1
-                            if ocr_value != record.house_no:
-                                self.log_debug(f"Applied AI house_no '{ai_res.house_no}' to voter {idx+1} on {page_id} (OCR was '{ocr_value}')")
+                if ai_page_results:
+                    ai_applied_count = 0
+                    serial_updated_count = 0
+                    ocr_fallback_count = 0
+                    
+                    # Match by position: record[i] in OCR matches ai_page_results[i]
+                    for idx, record in enumerate(page_records):
+                        if idx < len(ai_page_results):
+                            ai_result = ai_page_results[idx]
+                            ocr_house = record.house_no  # Save original OCR value
+                            ocr_serial = record.serial_no  # Save original OCR serial
+                            
+                            # Apply AI serial_no (more reliable than OCR for multi-digit numbers)
+                            if ai_result.serial_no and ai_result.serial_no.strip():
+                                ai_serial = ai_result.serial_no.strip()
+                                if ai_serial != ocr_serial:
+                                    record.serial_no = ai_serial
+                                    serial_updated_count += 1
+                                    self.log_debug(
+                                        f"Updated serial from '{ocr_serial}' to '{ai_serial}' "
+                                        f"at position {idx+1} on {page_id}"
+                                    )
+                            
+                            # Apply AI house_no
+                            if ai_result.house_no and ai_result.house_no.strip():
+                                ai_house = ai_result.house_no.strip()
+                                record.house_no = ai_house
+                                ai_applied_count += 1
+                                if ocr_house != ai_house:
+                                    self.log_debug(
+                                        f"Applied AI house_no '{ai_house}' at position {idx+1} "
+                                        f"(serial {record.serial_no}) on {page_id} (OCR was '{ocr_house}')"
+                                    )
+                            else:
+                                # AI gave empty house_no, keep OCR value
+                                ocr_fallback_count += 1
                         else:
-                            # AI gave empty result, keep OCR as fallback
+                            # More OCR records than AI records - keep OCR values
                             ocr_fallback_count += 1
-                            self.log_debug(
-                                f"AI house_no empty for voter {idx+1}, "
-                                f"keeping OCR result '{record.house_no}'"
-                            )
-                
-                self.log_info(
-                    f"Applied {ai_applied_count} AI house numbers on {page_id} "
-                    f"({ocr_fallback_count} used OCR fallback)"
-                )
+                    
+                    self.log_info(
+                        f"Applied {ai_applied_count} AI house numbers on {page_id} "
+                        f"({serial_updated_count} serials updated, {ocr_fallback_count} used OCR fallback)"
+                    )
+                else:
+                    self.log_debug(f"No AI results for {page_id}, using OCR values")
+            else:
+                # No AI processor available - all voters keep their OCR values
+                self.log_debug(f"No AI processor available, using OCR values for {page_id}")
+            
             
             page_time = time.perf_counter() - page_start_time
             merged_count = sum(1 for r in page_records if r.epic_valid and r.epic_no)
@@ -673,6 +676,14 @@ class OCRProcessor(BaseProcessor):
                     if retry_age:
                         result.age = retry_age
                 
+                # Retry house number extraction from individual crop if invalid/empty
+                # Only retry if AI processor is NOT being used (AI takes precedence later)
+                if not self.ai_id_processor and not self._is_valid_house_number(result.house_no):
+                    retry_house = self._retry_house_from_crop(page_id, image_name)
+                    if retry_house:
+                        result.house_no = retry_house
+                        self.log_debug(f"House number retry successful: {retry_house}")
+                
                 self.log_debug(f"Processed {image_name} in {result.elapsed_seconds:.4f}s")
                 records.append(result)
             
@@ -713,6 +724,14 @@ class OCRProcessor(BaseProcessor):
                     retry_age = self._retry_age_from_crop(page_id, image_name)
                     if retry_age:
                         result.age = retry_age
+                
+                # Retry house number extraction from individual crop if invalid/empty
+                # Only retry if AI processor is NOT being used (AI takes precedence later)
+                if not self.ai_id_processor and not self._is_valid_house_number(result.house_no):
+                    retry_house = self._retry_house_from_crop(page_id, image_name)
+                    if retry_house:
+                        result.house_no = retry_house
+                        self.log_debug(f"House number retry successful: {retry_house}")
                 
                 # Adjust reported time to include inference overhead
                 result.elapsed_seconds += approx_time
@@ -907,6 +926,67 @@ class OCRProcessor(BaseProcessor):
                 
         except Exception as e:
             self.log_debug(f"Age retry error: {e}")
+            return ""
+
+    def _retry_house_from_crop(self, page_id: str, image_name: str) -> str:
+        """
+        Retry house number extraction from individual crop image.
+        
+        Used when merged image OCR fails to extract valid house number.
+        Falls back to /crops folder for individual voter images.
+        
+        Args:
+            page_id: Page identifier (e.g., 'page-004')
+            image_name: Image name (e.g., 'page-004-001.png')
+            
+        Returns:
+            Extracted house number string, or empty string if not found
+        """
+        if not self.context.crops_dir:
+            return ""
+        
+        # Find the individual crop image
+        # Structure: crops/<page_id>/images/<image_name>
+        crop_path = self.context.crops_dir / page_id / "images" / image_name
+        
+        if not crop_path.exists():
+            # Try without 'images' subdirectory
+            crop_path = self.context.crops_dir / page_id / image_name
+        
+        if not crop_path.exists():
+            self.log_debug(f"Crop image not found for house retry: {crop_path}")
+            return ""
+        
+        self.log_debug(f"Retrying house number extraction from individual crop: {crop_path}")
+        
+        try:
+            # Load the individual crop image
+            img_bgr = cv2.imdecode(
+                np.fromfile(str(crop_path), dtype=np.uint8),
+                cv2.IMREAD_COLOR
+            )
+            
+            if img_bgr is None:
+                return ""
+            
+            # Run OCR on the individual image
+            if self.use_tesseract:
+                lines = self._run_tesseract_ocr(crop_path, img_bgr)
+            else:
+                lines = self._run_tamil_ocr(crop_path, img_bgr)
+            
+            # Extract house number from the OCR result
+            house_no = self._extract_house(lines, img_bgr)
+            
+            if self._is_valid_house_number(house_no):
+                self.log_debug(f"House number retry successful: {house_no}")
+                return house_no
+            else:
+                self.log_debug(f"House number retry failed, got: '{house_no}'")
+                return ""
+                
+        except Exception as e:
+            self.log_debug(f"House number retry error: {e}")
             return ""
 
     def _retry_epic_from_crop(self, page_id: str, image_name: str) -> str:
