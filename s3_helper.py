@@ -15,6 +15,8 @@ def download_pdfs(pdf_s3_paths: list[str], dest_dir: str):
 
     for s3_path in pdf_s3_paths:
         try:
+           
+
             parsed = urlparse(s3_path)
             bucket = parsed.netloc
             key = parsed.path.lstrip("/")
@@ -22,7 +24,6 @@ def download_pdfs(pdf_s3_paths: list[str], dest_dir: str):
 
             local_path = os.path.join(dest_dir, filename)
             logger.info(f"⬇️ Downloading {s3_path} → {local_path}")
-
             s3.download_file(bucket, key, local_path)
 
         except Exception as e:
@@ -30,7 +31,7 @@ def download_pdfs(pdf_s3_paths: list[str], dest_dir: str):
             raise
 
 
-def upload_directory(local_dir: str, s3_output_path: str):
+def upload_directory(local_dir: str, s3_output_path: str, output_identifier:str = "default"):
     """
     Upload all files in local_dir to the given s3://bucket/prefix/
     """
@@ -43,7 +44,7 @@ def upload_directory(local_dir: str, s3_output_path: str):
         if not os.path.isfile(local_path):
             continue
 
-        s3_key = f"{prefix}/{filename}"
+        s3_key = f"{prefix}/{output_identifier}_{filename}"
         logger.info(f"⬆️ Uploading {local_path} → s3://{bucket}/{s3_key}")
 
         try:

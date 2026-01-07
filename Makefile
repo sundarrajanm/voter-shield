@@ -41,7 +41,7 @@ clean:
 ### AWS ECR Related Targets ###
 
 # can be comma separated list of S3 paths for multiple booths!
-DRY_RUN_S3_INPUT=s3://264676382451-eci-download/dry-run/2025-EROLLGEN-S22-116-FinalRoll-Revision1-ENG-244-WI.pdf
+DRY_RUN_S3_INPUT=s3://264676382451-eci-download/dry-run/2024-FC-EROLLGEN-S22-116-FinalRoll-Revision2-ENG-1-WI.pdf
 DRY_RUN_S3_OUTPUT=s3://264676382451-eci-download/dry-run
 
 ecr-login:
@@ -60,7 +60,8 @@ run-fargate:
 run-fargate-dry-run:
 	./scripts/run-fargate.sh \
 	  --s3-input "$(DRY_RUN_S3_INPUT)" \
-	  # --s3-output "$(DRY_RUN_S3_OUTPUT)" # Enable this after write permissions are granted
+	  --s3-output "$(DRY_RUN_S3_OUTPUT)" \
+	  --output-identifier "S22_AC-116_1"
 
 dry-run:
 	python main.py --s3-input "$(DRY_RUN_S3_INPUT)" --s3-output "$(DRY_RUN_S3_OUTPUT)"
