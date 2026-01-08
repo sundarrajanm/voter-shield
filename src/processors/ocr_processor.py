@@ -176,6 +176,7 @@ class OCRResult:
             age=self.age,
             gender=self.gender,
             sequence_in_page=sequence_in_page,
+            sequence_in_document=sequence_in_document,
             image_file=self.image_name,
             epic_valid=self.epic_valid,
             processing_time_ms=round(self.elapsed_seconds * 1000, 2),
@@ -453,12 +454,20 @@ class OCRProcessor(BaseProcessor):
         total_voters = 0
         total_batches = 0
         
-        # AI processor available for per-page position-based matching
-        # We will match by position within each page instead of global serial matching
-        # because OCR may extract truncated serial numbers (e.g., "67" instead of "677")
+        # AI processor available - build GLOBAL lookup by serial_no across ALL pages
+        # This ensures correct matching even when AI page numbers don't match OCR page numbers
         has_ai_processor = self.ai_id_processor is not None
+        global_ai_by_serial = {}
         if has_ai_processor:
-            self.log_info("AI ID processor available for position-based house_no matching")
+            # Build global lookup from ALL AI results across ALL pages
+            all_ai_results = self.ai_id_processor.get_all_results()
+            for ai_result in all_ai_results:
+                if ai_result.serial_no and ai_result.serial_no.strip():
+                    global_ai_by_serial[ai_result.serial_no.strip()] = ai_result
+            self.log_info(f"AI ID processor available with {len(global_ai_by_serial)} results for global serial_no matching")
+            # Debug: show first 20 serial keys
+            first_keys = sorted(global_ai_by_serial.keys(), key=lambda x: int(x) if x.isdigit() else 0)[:20]
+            self.log_debug(f"First 20 AI serial keys: {first_keys}")
         
         for page_dir in page_dirs:
             page_id = page_dir.name
@@ -478,59 +487,58 @@ class OCRProcessor(BaseProcessor):
                 page_records.extend(batch_records)
                 total_batches += 1
             
-            # Apply AI house numbers and serial numbers by matching POSITION within page
-            # This is more reliable than serial matching because OCR may extract truncated
-            # serial numbers (e.g., "67" instead of "677")
-            if has_ai_processor:
-                ai_page_results = self.ai_id_processor.get_results_for_page(page_id)
+            # Apply AI house numbers by matching SERIAL NUMBER from GLOBAL lookup
+            # Use calculated sequence_in_document (not OCR serial_no) for reliable matching
+            if has_ai_processor and global_ai_by_serial:
+                ai_applied_count = 0
+                ocr_fallback_count = 0
                 
-                if ai_page_results:
-                    ai_applied_count = 0
-                    serial_updated_count = 0
-                    ocr_fallback_count = 0
+                for idx, record in enumerate(page_records):
+                    ocr_house = record.house_no  # Save original OCR value
                     
-                    # Match by position: record[i] in OCR matches ai_page_results[i]
-                    for idx, record in enumerate(page_records):
-                        if idx < len(ai_page_results):
-                            ai_result = ai_page_results[idx]
-                            ocr_house = record.house_no  # Save original OCR value
-                            ocr_serial = record.serial_no  # Save original OCR serial
-                            
-                            # Apply AI serial_no (more reliable than OCR for multi-digit numbers)
-                            if ai_result.serial_no and ai_result.serial_no.strip():
-                                ai_serial = ai_result.serial_no.strip()
-                                if ai_serial != ocr_serial:
-                                    record.serial_no = ai_serial
-                                    serial_updated_count += 1
-                                    self.log_debug(
-                                        f"Updated serial from '{ocr_serial}' to '{ai_serial}' "
-                                        f"at position {idx+1} on {page_id}"
-                                    )
-                            
-                            # Apply AI house_no
-                            if ai_result.house_no and ai_result.house_no.strip():
-                                ai_house = ai_result.house_no.strip()
-                                record.house_no = ai_house
-                                ai_applied_count += 1
-                                if ocr_house != ai_house:
-                                    self.log_debug(
-                                        f"Applied AI house_no '{ai_house}' at position {idx+1} "
-                                        f"(serial {record.serial_no}) on {page_id} (OCR was '{ocr_house}')"
-                                    )
-                            else:
-                                # AI gave empty house_no, keep OCR value
-                                ocr_fallback_count += 1
-                        else:
-                            # More OCR records than AI records - keep OCR values
-                            ocr_fallback_count += 1
+                    # Calculate sequence_in_document for this record
+                    # At this point, total_voters only contains count from PREVIOUS pages
+                    # So sequence_in_document = previous_count + current_position (1-indexed)
+                    seq_in_doc = total_voters + idx + 1
+                    serial_key = str(seq_in_doc)
                     
-                    self.log_info(
-                        f"Applied {ai_applied_count} AI house numbers on {page_id} "
-                        f"({serial_updated_count} serials updated, {ocr_fallback_count} used OCR fallback)"
-                    )
-                else:
-                    self.log_debug(f"No AI results for {page_id}, using OCR values")
-            else:
+                    # Debug logging for first 3 records on each page
+                    if idx < 3:
+                        exists = serial_key in global_ai_by_serial
+                        ai_val = global_ai_by_serial.get(serial_key)
+                        self.log_debug(
+                            f"[{page_id}] idx={idx}, total_voters={total_voters}, "
+                            f"seq_in_doc={seq_in_doc}, serial_key='{serial_key}', "
+                            f"exists={exists}, ai_house='{ai_val.house_no if ai_val else None}'"
+                        )
+                    
+                    # Match house_no by calculated sequence_in_document (which becomes serial_no)
+                    ai_result = global_ai_by_serial.get(serial_key)
+                    
+                    if ai_result and ai_result.house_no and ai_result.house_no.strip():
+                        ai_house = ai_result.house_no.strip()
+                        record.house_no = ai_house
+                        ai_applied_count += 1
+                        if ocr_house != ai_house:
+                            self.log_debug(
+                                f"Applied AI house_no '{ai_house}' for serial {serial_key} "
+                                f"on {page_id} (OCR was '{ocr_house}')"
+                            )
+                    else:
+                        # No AI result found for this serial, keep OCR value
+                        ocr_fallback_count += 1
+                        if idx < 3:  # Log first 3 misses for debugging
+                            available_keys = list(global_ai_by_serial.keys())[:10]
+                            self.log_debug(
+                                f"No AI result for serial {serial_key} on {page_id}, "
+                                f"keeping OCR house '{ocr_house}'. Available keys (first 10): {available_keys}"
+                            )
+                
+                self.log_info(
+                    f"Applied {ai_applied_count} AI house numbers on {page_id} "
+                    f"({ocr_fallback_count} used OCR fallback)"
+                )
+            elif not has_ai_processor:
                 # No AI processor available - all voters keep their OCR values
                 self.log_debug(f"No AI processor available, using OCR values for {page_id}")
             

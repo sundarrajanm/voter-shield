@@ -343,6 +343,21 @@ Process top-to-bottom, maintain sequence.
     def get_results_for_page(self, page_id: str) -> List[IdExtractionResult]:
         return self.page_results.get(page_id, [])
     
+    def get_all_results(self) -> List[IdExtractionResult]:
+        """
+        Get ALL AI extraction results across ALL pages as a flat list.
+        
+        This is used for global serial_no matching since AI page IDs
+        may not match OCR page IDs.
+        
+        Returns:
+            List of all IdExtractionResult objects
+        """
+        all_results = []
+        for page_id, results in self.page_results.items():
+            all_results.extend(results)
+        return all_results
+    
     def get_global_serial_house_map(self) -> Dict[str, str]:
         """
         Get a global mapping of serial_no -> house_no across ALL pages.

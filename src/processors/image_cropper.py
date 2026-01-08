@@ -42,7 +42,7 @@ VLINE_SCALE = 25
 VOTER_INK_FRAC_MIN = 0.008  # Restored - works for all voter pages
 VOTER_INK_FRAC_MAX = 0.28   # Restored - works for all voter pages
 VOTER_MAX_LINE_RATIO = 0.55  # Slightly relaxed from 0.60 - voter pages have ~0.41-0.50
-VOTER_MIN_SMALL_COMPONENTS = 15  # Lowered from 35 - voter pages have 18-38, some have 18
+VOTER_MIN_SMALL_COMPONENTS = 12  # Lowered from 15 - some voters with less text have ~13 components
 VOTER_MAX_LARGEST_CC_RATIO = 0.25  # Slightly raised from 0.22 - voter pages have max ~0.20
 VOTER_MIN_EDGE_FRAC = 0.07  # Key differentiator: voter=0.08+, non-voter=0.03-0.06
 POST_OCR_MIN_EDGE_FRAC = 0.03  # Lower threshold for preprocessed images (upscaling reduces edge density)
