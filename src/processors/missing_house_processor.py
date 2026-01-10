@@ -275,10 +275,12 @@ class MissingHouseNumberProcessor(BaseProcessor):
 The image contains {expected_count} voter records stacked vertically.
 Extract the house number (வீட்டு எண் / House No) for each record from top to bottom.
 
+IMPORTANT: Preserve ALL characters including Tamil letters (வீட்டு, தெரு, ஏ, வ, etc.).
+
 Return ONLY a JSON array of house numbers as strings in order.
 Use empty string "" if house number is not visible or illegible.
 
-Example: ["12", "34/A", "", "56-B"]
+Examples: ["12", "34/A", "5வ283", "2ஏ"] or ["12", "34/A", "", "56-B"]
 
 Return raw JSON only, no markdown code blocks."""
             

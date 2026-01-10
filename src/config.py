@@ -220,7 +220,7 @@ class OCRConfig:
     # ROI configurations (relative coordinates 0-1)
     epic_roi: ROIConfig = field(default_factory=lambda: ROIConfig(0.449227, 0.009029, 0.839956, 0.162528))
     serial_roi: ROIConfig = field(default_factory=lambda: ROIConfig(0.152318, 0.002257, 0.373068, 0.160271))
-    house_roi: ROIConfig = field(default_factory=lambda: ROIConfig(0.303532, 0.410835, 0.728477, 0.559819))
+    house_roi: ROIConfig = field(default_factory=lambda: ROIConfig(0.302428, 0.415350, 0.665563, 0.553047))
     deleted_roi: ROIConfig = field(default_factory=lambda: ROIConfig(0.199338, 0.146727, 0.763797, 0.823928))
 
 @dataclass

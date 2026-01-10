@@ -132,6 +132,7 @@ class DocumentMetadata:
     roll_type: str = ""
     roll_identification: str = ""
     total_pages: Optional[int] = None
+    total_voters_extracted: Optional[int] = None
     page_number_current: Optional[int] = None
     output_identifier: Optional[str] = None
     
@@ -166,6 +167,7 @@ class DocumentMetadata:
             "roll_type": self.roll_type,
             "roll_identification": self.roll_identification,
             "total_pages": self.total_pages,
+            "total_voters_extracted": self.total_voters_extracted,
             "page_number_current": self.page_number_current,
             "output_identifier": self.output_identifier,
             "constituency_details": self.constituency_details.to_dict(),
@@ -219,6 +221,7 @@ class DocumentMetadata:
         metadata.roll_type = doc_meta.get("roll_type", "")
         metadata.roll_identification = doc_meta.get("roll_identification", "")
         metadata.total_pages = doc_meta.get("total_pages")
+        metadata.total_voters_extracted = doc_meta.get("total_voters_extracted")
         metadata.page_number_current = doc_meta.get("page_number_current")
         metadata.output_identifier = response_data.get("output_identifier")
         

@@ -11,3 +11,5 @@ __pycache__/
 .git/
 .DS_Store
 venv/
+corrections/
+docs/

@@ -206,6 +206,7 @@ class ImageCropper(BaseProcessor):
             self.log_warning(f"Error reading metadata for language detection: {e}")
             return DEFAULT_SKIP_PAGES
     
+    
     def validate(self) -> bool:
         """Validate prerequisites."""
         if not self.context.images_dir:
@@ -217,6 +218,110 @@ class ImageCropper(BaseProcessor):
             return False
         
         return True
+    
+    def _get_expected_voter_count(self) -> Optional[int]:
+        """
+        Read expected voter count from metadata JSON file.
+        
+        Returns:
+            Expected total voter count or None if not available
+        """
+        if not self.context.output_dir:
+            return None
+        
+        # Find metadata JSON file
+        metadata_files = list(self.context.output_dir.glob("*-metadata.json"))
+        if not metadata_files:
+            return None
+        
+        try:
+            metadata_path = metadata_files[0]
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+            
+            # Navigate to net_total.total
+            detailed_summary = metadata.get("detailed_elector_summary", {})
+            net_total = detailed_summary.get("net_total", {})
+            total = net_total.get("total")
+            
+            if total is not None and isinstance(total, int):
+                self.log_debug(f"Expected voter count from metadata: {total}")
+                return total
+            else:
+                self.log_debug("No valid total voter count in metadata")
+                return None
+                
+        except Exception as e:
+            self.log_warning(f"Error reading expected voter count: {e}")
+            return None
+    
+    def _is_tamil_document(self) -> bool:
+        """
+        Check if document is Tamil based on metadata.
+        
+        Returns:
+            True if Tamil document, False otherwise
+        """
+        if not self.context.output_dir:
+            return False
+        
+        metadata_files = list(self.context.output_dir.glob("*-metadata.json"))
+        if not metadata_files:
+            return False
+        
+        try:
+            metadata_path = metadata_files[0]
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+            
+            languages = metadata.get("language_detected", [])
+            if languages and isinstance(languages, list):
+                primary_language = languages[0].lower() if languages else ""
+                return "tamil" in primary_language
+                
+        except Exception as e:
+            self.log_debug(f"Error checking language: {e}")
+            return False
+        
+        return False
+    
+    def _process_pages_batch(self, page_images: List[Path]) -> int:
+        """
+        Process a batch of page images in parallel.
+        
+        Args:
+            page_images: List of page image paths to process
+            
+        Returns:
+            Total number of crops saved
+        """
+        if not page_images:
+            return 0
+        
+        total_crops = 0
+        max_workers = min(os.cpu_count() or 4, 8)
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_path = {
+                executor.submit(self._process_page, p): p 
+                for p in page_images
+            }
+            
+            for future in as_completed(future_to_path):
+                img_path = future_to_path[future]
+                try:
+                    result = future.result()
+                    
+                    if result is None:
+                        continue
+                    
+                    self.page_results.append(result)
+                    total_crops += result.crops_saved
+                        
+                except Exception as e:
+                    self.log_error(f"Error processing {img_path.name}: {e}")
+        
+        return total_crops
     
     def _extract_fields(self, img: np.ndarray) -> np.ndarray:
         """
@@ -321,7 +426,13 @@ class ImageCropper(BaseProcessor):
     
     def process(self) -> bool:
         """
-        Process all page images in the document.
+        Process all page images in the document with smart validation.
+        
+        For Tamil documents:
+        1. Skip first 3 pages and crop remaining pages
+        2. Validate crop count against metadata total
+        3. If crops < total, re-process page 3 (the third skipped page)
+        4. If still mismatch, terminate with error
         
         Returns:
             True if processing succeeded
@@ -329,70 +440,94 @@ class ImageCropper(BaseProcessor):
         import time
         
         images_dir = self.context.images_dir
-        page_images = self._list_images(images_dir)
+        all_page_images = self._list_images(images_dir)
         
-        if not page_images:
+        if not all_page_images:
             self.log_warning(f"No images found in {images_dir}")
             return False
         
-        self.log_info(f"Found {len(page_images)} page image(s)")
+        self.log_info(f"Found {len(all_page_images)} page image(s)")
         
         # Update skip_pages from metadata (now that MetadataExtractor has likely run)
         self.skip_pages = self._get_skip_pages_count()
         
+        # Get expected total from metadata
+        expected_total = self._get_expected_voter_count()
+        
+        # Store skipped pages for potential re-processing
+        skipped_pages = []
+        page_images = all_page_images
+        
         # Skip initial non-voter pages based on language
-        if self.skip_pages > 0 and len(page_images) > self.skip_pages:
-            skipped_pages = page_images[:self.skip_pages]
-            page_images = page_images[self.skip_pages:]
+        if self.skip_pages > 0 and len(all_page_images) > self.skip_pages:
+            skipped_pages = all_page_images[:self.skip_pages]
+            page_images = all_page_images[self.skip_pages:]
             self.log_info(
                 f"Skipping first {self.skip_pages} pages (non-voter pages)",
                 skipped=[p.name for p in skipped_pages]
             )
         
-        total_pages = len(page_images)
-        processed = 0
-        skipped = 0
-        unreadable = 0
-        total_crops = 0
-        
         run_start = time.perf_counter()
         
-        # Parallel processing of pages
-        max_workers = min(os.cpu_count() or 4, 8)  # Cap workers to avoid OOM
+        # First pass: Process with skipped pages
+        total_crops = self._process_pages_batch(page_images)
         
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Map futures to image paths
-            future_to_path = {
-                executor.submit(self._process_page, p): p 
-                for p in page_images
-            }
+        elapsed_first = time.perf_counter() - run_start
+        
+        # Validate crop count for Tamil documents
+        is_tamil = self._is_tamil_document()
+        if is_tamil and expected_total is not None and expected_total > 0:
+            self.log_info(
+                f"Validation check",
+                expected=expected_total,
+                cropped=total_crops,
+                match=(total_crops == expected_total)
+            )
             
-            for future in as_completed(future_to_path):
-                img_path = future_to_path[future]
-                try:
-                    result = future.result()
-                    
-                    if result is None:
-                        unreadable += 1
-                        continue
-                    
-                    self.page_results.append(result)
-                    processed += 1
-                    
-                    if result.crops_saved == 0:
-                        skipped += 1
-                    else:
-                        total_crops += result.crops_saved
-                        
-                except Exception as e:
-                    self.log_error(f"Error processing {img_path.name}: {e}")
-                    unreadable += 1
+            # If crops < expected and we skipped 3 pages (page 3 exists)
+            if total_crops < expected_total and len(skipped_pages) >= 3:
+                page_3 = skipped_pages[2]  # 0-indexed, so page 3 is index 2
+                self.log_warning(
+                    f"Crop count mismatch: {total_crops} < {expected_total}. "
+                    f"Re-processing page 3: {page_3.name}"
+                )
+                
+                # Process page 3
+                retry_start = time.perf_counter()
+                additional_crops = self._process_pages_batch([page_3])
+                total_crops += additional_crops
+                elapsed_retry = time.perf_counter() - retry_start
+                
+                self.log_info(
+                    f"Page 3 re-processed",
+                    additional_crops=additional_crops,
+                    new_total=total_crops,
+                    time=f"{elapsed_retry:.2f}s"
+                )
+                
+                # Final validation
+                if total_crops != expected_total:
+                    self.log_error(
+                        f"CRITICAL: Crop count still mismatched after retry. "
+                        f"Expected: {expected_total}, Got: {total_crops}. "
+                        f"Terminating processing for this document."
+                    )
+                    return False
+                else:
+                    self.log_info(
+                        f"✓ Crop count validated successfully after page 3 re-processing: {total_crops}"
+                    )
         
         elapsed = time.perf_counter() - run_start
         
+        # Calculate summary stats
+        processed = len(self.page_results)
+        skipped = sum(1 for r in self.page_results if r.crops_saved == 0)
+        unreadable = len(page_images) - len(self.page_results)
+        
         self.summary = CropSummary(
             pdf_name=self.context.pdf_name,
-            total_pages=total_pages,
+            total_pages=len(page_images),
             processed_pages=processed,
             skipped_pages=skipped,
             unreadable_pages=unreadable,

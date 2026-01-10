@@ -12,3 +12,4 @@ done/
 extraction_completed/
 *.tar
 test_*
+missing_voters_pdfs/

@@ -85,6 +85,7 @@ Rules for Extraction:
 - "roll_type" and "roll_identification": Capture exactly as printed (e.g., "Supplement 1" and "Special Summary Revision 2025").
 - "sections": Extract the numbered list of sections found in Part 2 of the front page.
 - "detailed_elector_summary": Extract the serial number range and net total (by gender) from the back page summary table.
+  - **CRITICAL**: The "net_total.total" field MUST always be greater than 1. Electoral rolls NEVER contain only a single voter. If you detect a value of 1, re-examine the document carefully - you are likely reading the wrong field or misinterpreting the data.
 - "signature_present": Return true if any physical signature, seal, or mark is visible on the authority line.
 - "voters": MUST be returned as an empty array [].
 - Set missing or illegible fields to null.
@@ -115,6 +116,21 @@ TIPS FOR TAMIL DOCUMENTS:
 - "Polling Station Address" often appears as "வாக்குச்சாவடியின் முகவரி".
 - "Polling Station Type" often appears as "வாக்குச்சாவடியின் வகைப்பாடு" (Look for "ஆண்" (Male) / "பெண்" (Female) / "பொது" (General)).
 - "Auxiliary Polling Station Count" often appears as "துணைவாக்குச் சாவடிகளின் எண்ணிக்கை".
+- "District" appears as "மாவட்டம்".
+- "Police Station" appears as "காவல் நிலையம்".
+- "Pin Code" appears as "அஞ்சல் குறியீட்டு எண்" or "பின்கோடு".
+- "Revenue Division" appears as "வருவாய் கோட்டம்".
+- "Ward" appears as "வார்டு".
+- "City/Town/Village" appears as "நகரம்/கிராமம்".
+- "Revision Type" appears as "திருத்தத்தின் தன்மை".
+- "Qualifying Date" appears as "தகுதி நாள்".
+- "Publication Date" appears as "வெளியிடப்பட்ட தேதி".
+- "Village Panchayat" appears as "கிராம ஊராட்சி".
+- "Town Panchayat" appears as "பேரூராட்சி".
+
+CRITICAL EXTRACTION RULES:
+- **Panchayat Name**: This field is often missed. Look for "Village Panchayat", "Town Panchayat", "Panchayat Union", or Tamil terms "ஊராட்சி", "பேரூராட்சி", "ஊராட்சி ஒன்றியம்". even if it appears small or in a corner, extract it. If it is part of a longer address line, extract just the name.
+- **Detailed Elector Summary**: You MUST extract the summary table from the back page (or wherever it appears). The 'net_total' fields are mandatory.
 
 the ward number should be a number
 

@@ -189,7 +189,12 @@ records = [
   ["215", "17"]
 ]
 
-Extract complete house numbers with all characters (letters, numbers, /, -, parentheses).
+IMPORTANT: Extract complete house numbers with ALL characters including:
+- Tamil letters (வீட்டு, தெரு, ஏ, வ, etc.)
+- English letters (A, B, C, etc.)
+- Numbers (0-9)
+- Special characters: /, -, (, ), comma
+Do NOT skip or omit Tamil letters - they are part of the house number.
 Process top-to-bottom, maintain sequence.
                         """
                     }

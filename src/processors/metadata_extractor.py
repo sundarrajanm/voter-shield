@@ -314,6 +314,18 @@ class MetadataExtractor(BaseProcessor):
         constituency = data.get("constituency_details", {})
         if not constituency:
             return False
+
+        # Validate Language Detection (Critical)
+        # Check both root and document_metadata (normalized structure)
+        doc_meta = data.get("document_metadata", {})
+        # If empty, fallback to root
+        if not doc_meta: 
+            doc_meta = data
+        
+        langs = doc_meta.get("language_detected")
+        if not langs or len(langs) == 0:
+            self.log_warning("Language detected field is empty or missing")
+            return False
             
         # Critical fields that should not be empty
         # Note: We check for truthiness, so None or "" will trigger retry
@@ -322,6 +334,24 @@ class MetadataExtractor(BaseProcessor):
             constituency.get("assembly_constituency_number"),
             constituency.get("part_number")
         ]
+
+        # Check for detailed elector summary (Crucial)
+        summary = data.get("detailed_elector_summary", {})
+        
+        # Validate Serial Number Range
+        serial_range = summary.get("serial_number_range", {})
+        if serial_range.get("start") is None or serial_range.get("end") is None:
+             self.log_warning(f"Detailed elector summary range incomplete: {serial_range}")
+             critical_fields.append(None)
+
+        # Validate Net Total
+        net_total = summary.get("net_total", {})
+        required_stats = ["male", "female", "third_gender", "total"]
+        for f in required_stats:
+             if net_total.get(f) is None:
+                 self.log_warning(f"Detailed elector summary missing field: net_total.{f}")
+                 critical_fields.append(None)
+
         
         for field in critical_fields:
             if not field and field != 0: # 0 is a valid number, but usually these are strings or >0 ints

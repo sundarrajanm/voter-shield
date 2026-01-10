@@ -85,6 +85,48 @@ from src.utils.s3_utils import is_s3_url, download_from_s3, upload_to_s3
 logger = get_logger("main")
 
 
+def retry_database_operation(operation_func, operation_name: str, max_retries: int = 3, wait_seconds: int = 5) -> bool:
+    """
+    Retry a database operation with exponential backoff.
+    
+    Args:
+        operation_func: Function to execute (should return True on success, False on failure)
+        operation_name: Name of the operation for logging
+        max_retries: Maximum number of retry attempts
+        wait_seconds: Seconds to wait between retries
+        
+    Returns:
+        True if operation succeeded, False otherwise
+    """
+    import psycopg2
+    
+    for attempt in range(max_retries):
+        try:
+            result = operation_func()
+            if result:
+                logger.info(f"✓ {operation_name} succeeded")
+                return True
+            else:
+                logger.warning(f"✗ {operation_name} returned False")
+                return False
+                
+        except psycopg2.OperationalError as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Database connection error during {operation_name}: {e}")
+                logger.info(f"Retrying {operation_name} (Attempt {attempt + 2}/{max_retries})...")
+                time.sleep(wait_seconds)
+                continue
+            else:
+                logger.error(f"Failed {operation_name} after {max_retries} attempts due to connection errors")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Database operation failed ({operation_name}): {e}", exc_info=True)
+            return False
+    
+    return False
+
+
 def resolve_pdf_path(path_str: str, config: Config) -> Optional[Path]:
     """
     Resolve a PDF path from string input.
@@ -394,10 +436,23 @@ def process_pdf(
         metadata_extractor = MetadataExtractor(context, force=True, output_identifier=args.output_identifier)
         if metadata_extractor.run() and metadata_extractor.result:
             document.metadata = metadata_extractor.result
+            
+            # Critical Check: Language Detection
+            if not document.metadata.language_detected:
+                logger.error("CRITICAL: Language not detected in metadata. Terminating processing for this file.")
+                document.status = "failed"
+                document.error = "Language not detected"
+                return document
+
             # Transfer AI usage from context to document stats
             if context.ai_usage:
                 document.stats.ai_usage = context.ai_usage
             store.save_metadata(context.pdf_name, metadata_extractor.result)
+        else:
+            logger.error("CRITICAL: Metadata extraction failed. Terminating processing for this file.")
+            document.status = "failed"
+            document.error = "Metadata extraction failed"
+            return document
     
     # Step 3: Crop voter boxes
     if args.step in ["crop", "all"]:
@@ -552,17 +607,25 @@ def process_pdf(
         output_path = store.save_document(document)
         logger.info(f"Saved output: {output_path}")
         
+        # Also update metadata sidecar with final counts
+        if document.metadata:
+            store.save_metadata(context.pdf_name, document.metadata, total_voters_extracted=document.total_voters)
+        
         # Save to PostgreSQL if configured
         if config.db.is_configured:
             logger.info("Saving to PostgreSQL database...")
-            try:
+            
+            def save_to_db():
                 from src.persistence.postgres import PostgresRepository
                 db_repo = PostgresRepository(config.db)
                 db_repo.init_db()
-                if db_repo.save_document(document):
-                    logger.info("Successfully saved to database")
-            except Exception as e:
-                logger.error(f"Database operation failed: {e}")
+                return db_repo.save_document(document)
+            
+            retry_database_operation(
+                save_to_db,
+                f"Save document {document.pdf_name} to database"
+            )
+        
         
     # Step 5.5: Extract Missing House Numbers
     if args.csv or args.step == "csv":
@@ -588,6 +651,30 @@ def process_pdf(
                     if result.extracted_count > 0:
                         output_path = store.save_document(document)
                         logger.info(f"Updated document with extracted house numbers: {output_path}")
+
+            # Step 5.6: Reprocess Missing Names
+            # Run this whenever we are checking for missing data (before CSV export)
+            if document.pages:
+                logger.info("Step 5.6: Checking for missing voter names and relations...")
+                from src.processors import MissingNameProcessor
+                
+                missing_name_proc = MissingNameProcessor(context, document)
+                if missing_name_proc.run():
+                    if missing_name_proc.result:
+                        result = missing_name_proc.result
+                        if result.missing_name_count > 0:
+                            logger.info(
+                                f"Missing names: found={result.missing_name_count}, "
+                                f"OCR-fixed={result.ocr_recovered_count}, "
+                                f"AI-fixed={result.ai_recovered_count}"
+                            )
+                        else:
+                            logger.info("No missing voter names found")
+                    
+                    # Update saved document if any recoveries happened
+                    if missing_name_proc.result and (missing_name_proc.result.ocr_recovered_count > 0 or missing_name_proc.result.ai_recovered_count > 0):
+                        output_path = store.save_document(document)
+                        logger.info(f"Updated document with recovered names: {output_path}")
         
     # Step 6: CSV Export
     if args.csv or args.step == "csv":
@@ -618,17 +705,20 @@ def process_pdf(
             # Update Database after CSV (ensures output_identifier and any late updates are saved)
             if config.db.is_configured and document.status == "completed":
                 logger.info("Updating PostgreSQL database after CSV generation...")
-                try:
+                
+                def update_db():
                     from src.persistence.postgres import PostgresRepository
                     db_repo = PostgresRepository(config.db)
                     # Ensure output_identifier is in metadata if provided
                     if args.output_identifier and document.metadata:
                         document.metadata.output_identifier = args.output_identifier
-                    
-                    if db_repo.save_document(document):
-                        logger.info("Successfully updated database")
-                except Exception as e:
-                    logger.error(f"Database update failed: {e}")
+                    return db_repo.save_document(document)
+                
+                retry_database_operation(
+                    update_db,
+                    f"Update document {document.pdf_name} in database after CSV"
+                )
+        
     
     return document
 
@@ -841,17 +931,25 @@ def process_extracted_folder(
         output_path = store.save_document(document)
         logger.info(f"Saved output: {output_path}")
 
+        # Also update metadata sidecar with final counts
+        if document.metadata:
+            store.save_metadata(context.pdf_name, document.metadata, total_voters_extracted=document.total_voters)
+
         # Save to PostgreSQL if configured
         if config.db.is_configured:
             logger.info("Saving to PostgreSQL database...")
-            try:
+            
+            def save_to_db():
                 from src.persistence.postgres import PostgresRepository
                 db_repo = PostgresRepository(config.db)
                 db_repo.init_db()
-                if db_repo.save_document(document):
-                    logger.info("Successfully saved to database")
-            except Exception as e:
-                logger.error(f"Database operation failed: {e}")
+                return db_repo.save_document(document)
+            
+            retry_database_operation(
+                save_to_db,
+                f"Save extracted folder {document.pdf_name} to database"
+            )
+
 
     # Step: Missing House Numbers Extraction
     if args.csv or args.step == "csv":
@@ -894,17 +992,20 @@ def process_extracted_folder(
             # Update Database after CSV
             if config.db.is_configured and document.status == "completed":
                 logger.info("Updating PostgreSQL database after CSV generation...")
-                try:
+                
+                def update_db():
                     from src.persistence.postgres import PostgresRepository
                     db_repo = PostgresRepository(config.db)
                     # Ensure output_identifier is in metadata if provided
                     if args.output_identifier and document.metadata:
                         document.metadata.output_identifier = args.output_identifier
-                    
-                    if db_repo.save_document(document):
-                        logger.info("Successfully updated database")
-                except Exception as e:
-                    logger.error(f"Database update failed: {e}")
+                    return db_repo.save_document(document)
+                
+                retry_database_operation(
+                    update_db,
+                    f"Update extracted folder {document.pdf_name} in database after CSV"
+                )
+
 
         # If we are ONLY running CSV step on existing folder
         elif args.step == "csv":
@@ -965,14 +1066,25 @@ def process_metadata_only(
     metadata_extractor = MetadataExtractor(context, force=True, output_identifier=args.output_identifier)
     if metadata_extractor.run() and metadata_extractor.result:
         document.metadata = metadata_extractor.result
+        
+        # Critical Check: Language Detection
+        if not document.metadata.language_detected:
+            logger.error("CRITICAL: Language not detected in metadata. Terminating processing for this file.")
+            document.status = "failed"
+            document.error = "Language not detected"
+            return document
+
         # Transfer AI usage from context to document stats
         if context.ai_usage:
             document.stats.ai_usage = context.ai_usage
         # NOTE: Do NOT call store.save_metadata here!
         # The metadata_extractor already saved the file with AI usage data
     else:
-        logger.warning(f"Metadata extraction failed for {folder.name}")
-    
+        logger.error(f"CRITICAL: Metadata extraction failed for {folder.name}")
+        document.status = "failed"
+        document.error = "Metadata extraction failed"
+        return document
+            
     # Finalize
     document.status = "completed"
     document.stats.total_time_sec = timer.elapsed

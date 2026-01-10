@@ -70,19 +70,24 @@ class JSONStore:
         
         return output_path
     
-    def save_metadata(self, pdf_name: str, metadata: DocumentMetadata) -> Path:
+    def save_metadata(self, pdf_name: str, metadata: DocumentMetadata, total_voters_extracted: Optional[int] = None) -> Path:
         """
         Save document metadata separately.
         
         Args:
             pdf_name: PDF name
             metadata: Metadata to save
+            total_voters_extracted: Optional number of voters extracted
         
         Returns:
             Path to saved file
         """
         output_dir = self._get_output_dir(pdf_name)
         output_path = output_dir / f"{pdf_name}-metadata.json"
+        
+        # Set total_voters_extracted if provided
+        if total_voters_extracted is not None:
+            metadata.total_voters_extracted = total_voters_extracted
         
         output_path.write_text(
             json.dumps(metadata.to_dict(), ensure_ascii=False, indent=2),
@@ -312,6 +317,13 @@ class JSONStore:
         else:
             pdf_name = document.pdf_name
             data = document.to_combined_json()
+            
+        # Safeguard: Ensure total_voters_extracted is synced in metadata
+        # This handles cases where we load an old JSON where this might be null
+        if data.get("metadata") and isinstance(data["metadata"], dict):
+            # If total_voters_extracted is missing/null/0, try to set it from top-level total_voters
+            if not data["metadata"].get("total_voters_extracted") and data.get("total_voters"):
+                 data["metadata"]["total_voters_extracted"] = data["total_voters"]
         
         output_dir = self._get_output_dir(pdf_name) / "csv"
         output_dir.mkdir(parents=True, exist_ok=True)

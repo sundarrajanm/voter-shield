@@ -254,6 +254,22 @@ class ProcessedDocument:
             "stats": self.stats.to_dict(),
         }
     
+    def _get_metadata_dict(self) -> Optional[dict[str, Any]]:
+        """
+        Get metadata dictionary with synchronized calculated fields.
+        """
+        if not self.metadata:
+            return None
+            
+        meta_dict = self.metadata.to_dict()
+        
+        # Ensure total_voters_extracted matches the actual extracted count
+        # This overrides any None value or stale count in the metadata
+        if self.pages:  # Only update if we have pages (meaning we processed voters)
+            meta_dict["total_voters_extracted"] = self.total_voters
+            
+        return meta_dict
+    
     def to_combined_json(self) -> dict[str, Any]:
         """
         Generate combined JSON matching original output format.
@@ -279,7 +295,7 @@ class ProcessedDocument:
             "processed_at": self.processed_at,
             
             # Metadata if available
-            "metadata": self.metadata.to_dict() if self.metadata else None,
+            "metadata": self._get_metadata_dict(),
             
             # Summary counts
             "pages_count": len(self.pages),

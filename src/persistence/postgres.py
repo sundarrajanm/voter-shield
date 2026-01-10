@@ -72,6 +72,7 @@ class PostgresRepository:
                         roll_type TEXT,
                         roll_identification TEXT,
                         total_pages INTEGER,
+                        total_voters_extracted INTEGER,
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         
@@ -198,6 +199,9 @@ class PostgresRepository:
         """Insert or update metadata record."""
         meta = document.metadata
         
+        # Set total_voters_extracted from the actual extracted voters count
+        meta.total_voters_extracted = document.total_voters
+        
         # Prepare JSON fields
         pdf_name = document.pdf_name
         # If document_id in metadata is empty, fallback to document.id
@@ -219,7 +223,7 @@ class PostgresRepository:
             INSERT INTO metadata (
                 document_id, pdf_name, state, year, revision_type,
                 qualifying_date, publication_date, roll_type, roll_identification,
-                total_pages, 
+                total_pages, total_voters_extracted, 
                 town_or_village, main_town_or_village, ward_number, post_office,
                 police_station, taluk_or_block, subdivision, district, pin_code, panchayat_name,
                 constituency_details, administrative_address,
@@ -229,7 +233,7 @@ class PostgresRepository:
             ) VALUES (
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s,
-                %s, 
+                %s, %s, 
                 %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s,
                 %s, %s,
@@ -247,6 +251,7 @@ class PostgresRepository:
                 roll_type = EXCLUDED.roll_type,
                 roll_identification = EXCLUDED.roll_identification,
                 total_pages = EXCLUDED.total_pages,
+                total_voters_extracted = EXCLUDED.total_voters_extracted,
                 town_or_village = EXCLUDED.town_or_village,
                 main_town_or_village = EXCLUDED.main_town_or_village,
                 ward_number = EXCLUDED.ward_number,
@@ -283,6 +288,7 @@ class PostgresRepository:
             meta.roll_type,
             meta.roll_identification,
             meta.total_pages,
+            meta.total_voters_extracted,
             meta.administrative_address.town_or_village,
             meta.administrative_address.main_town_or_village,
             meta.administrative_address.ward_number,
