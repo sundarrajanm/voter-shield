@@ -321,6 +321,9 @@ Options:
 | `AI_MODEL` | AI model name | `meta-llama/llama-4-maverick-17b-128e-instruct` |
 | `AI_BASE_URL` | API base URL | Provider default |
 | `AI_TIMEOUT_SEC` | Request timeout | `120` |
+| `AI_ENABLE_EXTRACTION` | Enable AI for house numbers & missing data | `false` |
+
+**Note**: When `AI_ENABLE_EXTRACTION=false`, only first-page metadata extraction uses AI (reduces costs by 80-95%). Set to `true` to enable AI for house number extraction and missing data recovery.
 
 ### AWS S3 Configuration
 

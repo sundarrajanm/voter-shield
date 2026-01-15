@@ -111,6 +111,10 @@ class AIConfig:
     batch_size: int = field(default_factory=lambda: _get_int_env("AI_OCR_BATCH_SIZE", 5))
     id_batch_size: int = field(default_factory=lambda: _get_int_env("AI_ID_BATCH_SIZE", 5))
     
+    # AI extraction control - when False, disables AI for house numbers, missing names, etc
+    # First page metadata extraction is always enabled (required)
+    enable_ai_extraction: bool = field(default_factory=lambda: _get_bool_env("AI_ENABLE_EXTRACTION", False))
+    
     # Retry configuration
     max_retries: int = field(default_factory=lambda: _get_int_env("AI_MAX_RETRIES", 3))
     retry_delay_sec: float = field(default_factory=lambda: _get_float_env("AI_RETRY_DELAY_SEC", 2.0) or 2.0)

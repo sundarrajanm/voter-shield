@@ -510,41 +510,47 @@ def process_pdf(
     # Step: AI ID Extraction
     ai_id_processor = None
     if args.step in ["id-extract", "all"]:
-        logger.info("Step: AI ID (Serial/EPIC/House) Extraction...")
-        from src.processors import AIIdProcessor
-        ai_id_processor = AIIdProcessor(context)
-        if ai_id_processor.run():
-            logger.info("AI ID extraction complete")
-            # Keep the processor for OCR step integration
+        # Only run AI ID extraction if enabled in config
+        if config.ai.enable_ai_extraction:
+            logger.info("Step: AI ID (Serial/EPIC/House) Extraction...")
+            from src.processors import AIIdProcessor
+            ai_id_processor = AIIdProcessor(context)
+            if ai_id_processor.run():
+                logger.info("AI ID extraction complete")
+                # Keep the processor for OCR step integration
+        else:
+            logger.info("Step: AI ID (Serial/EPIC/House) Extraction SKIPPED (AI_ENABLE_EXTRACTION=false)")
     elif args.step == "ocr":
-        # For OCR-only runs, try to load existing AI ID data from debug files
-        from src.processors import AIIdProcessor
-        debug_dir = context.output_dir / "debug"
-        if debug_dir.exists():
-            id_extract_files = list(debug_dir.glob("id_extract_page-*.json"))
-            if id_extract_files:
-                logger.info(f"Loading existing AI ID data from {len(id_extract_files)} debug files...")
-                ai_id_processor = AIIdProcessor(context)
-                # Load the data into the processor's page_results
-                import json
-                from src.processors.ai_id_processor import IdExtractionResult
-                for file_path in sorted(id_extract_files):
-                    page_id = file_path.stem.replace("id_extract_", "")
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        results = [
-                            IdExtractionResult(
-                                serial_no=item.get("serial_no", ""),
-                                house_no=item.get("house_no", "")
-                            )
-                            for item in data
-                        ]
-                        ai_id_processor.page_results[page_id] = results
-                    except Exception as e:
-                        logger.warning(f"Failed to load {file_path}: {e}")
-                total_loaded = sum(len(v) for v in ai_id_processor.page_results.values())
-                logger.info(f"Loaded {total_loaded} AI ID records from {len(ai_id_processor.page_results)} pages")
+        # For OCR-only runs, try to load existing AI ID data from debug files IF enabled
+        if config.ai.enable_ai_extraction:
+            from src.processors import AIIdProcessor
+            debug_dir = context.output_dir / "debug"
+            if debug_dir.exists():
+                id_extract_files = list(debug_dir.glob("id_extract_page-*.json"))
+                if id_extract_files:
+                    logger.info(f"Loading existing AI ID data from {len(id_extract_files)} debug files...")
+                    ai_id_processor = AIIdProcessor(context)
+                    # Load the data into the processor's page_results
+                    import json
+                    from src.processors.ai_id_processor import IdExtractionResult
+                    for file_path in sorted(id_extract_files):
+                        page_id = file_path.stem.replace("id_extract_", "")
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                            results = [
+                                IdExtractionResult(
+                                    serial_no=item.get("serial_no", ""),
+                                    house_no=item.get("house_no", "")
+                                )
+                                for item in data
+                            ]
+                            ai_id_processor.page_results[page_id] = results
+                        except Exception as e:
+                            logger.warning(f"Failed to load {file_path}: {e}")
+                    total_loaded = sum(len(v) for v in ai_id_processor.page_results.values())
+                    logger.info(f"Loaded {total_loaded} AI ID records from {len(ai_id_processor.page_results)} pages")
+
     
     # Step 4: Merge cropped images
     if args.step in ["merge", "all"]:
@@ -631,7 +637,8 @@ def process_pdf(
     if args.csv or args.step == "csv":
         if document.status == "completed" or args.step == "csv":
             # Check if there are any missing house numbers and extract them using AI
-            if document.pages:
+            # Only run if AI extraction is enabled
+            if document.pages and config.ai.enable_ai_extraction:
                 logger.info("Step 5.5: Checking for missing house numbers...")
                 from src.processors import MissingHouseNumberProcessor
                 
@@ -651,10 +658,14 @@ def process_pdf(
                     if result.extracted_count > 0:
                         output_path = store.save_document(document)
                         logger.info(f"Updated document with extracted house numbers: {output_path}")
+            elif document.pages and not config.ai.enable_ai_extraction:
+                logger.info("Step 5.5: Missing house number extraction SKIPPED (AI_ENABLE_EXTRACTION=false)")
+
 
             # Step 5.6: Reprocess Missing Names
             # Run this whenever we are checking for missing data (before CSV export)
-            if document.pages:
+            # Only run if AI extraction is enabled
+            if document.pages and config.ai.enable_ai_extraction:
                 logger.info("Step 5.6: Checking for missing voter names and relations...")
                 from src.processors import MissingNameProcessor
                 
@@ -675,6 +686,9 @@ def process_pdf(
                     if missing_name_proc.result and (missing_name_proc.result.ocr_recovered_count > 0 or missing_name_proc.result.ai_recovered_count > 0):
                         output_path = store.save_document(document)
                         logger.info(f"Updated document with recovered names: {output_path}")
+            elif document.pages and not config.ai.enable_ai_extraction:
+                logger.info("Step 5.6: Missing name recovery SKIPPED (AI_ENABLE_EXTRACTION=false)")
+
         
     # Step 6: CSV Export
     if args.csv or args.step == "csv":
@@ -837,40 +851,46 @@ def process_extracted_folder(
     # Step: AI ID Extraction
     ai_id_processor = None
     if args.step in ["id-extract", "all"]:
-        logger.info("AI ID (Serial/EPIC/House) Extraction...")
-        from src.processors import AIIdProcessor
-        ai_id_processor = AIIdProcessor(context)
-        if ai_id_processor.run():
-            logger.info("AI ID extraction complete")
+        # Only run AI ID extraction if enabled in config
+        if config.ai.enable_ai_extraction:
+            logger.info("AI ID (Serial/EPIC/House) Extraction...")
+            from src.processors import AIIdProcessor
+            ai_id_processor = AIIdProcessor(context)
+            if ai_id_processor.run():
+                logger.info("AI ID extraction complete")
+        else:
+            logger.info("AI ID (Serial/EPIC/House) Extraction SKIPPED (AI_ENABLE_EXTRACTION=false)")
     elif args.step == "ocr":
-        # For OCR-only runs, try to load existing AI ID data from debug files
-        from src.processors import AIIdProcessor
-        debug_dir = context.output_dir / "debug"
-        if debug_dir.exists():
-            id_extract_files = list(debug_dir.glob("id_extract_page-*.json"))
-            if id_extract_files:
-                logger.info(f"Loading existing AI ID data from {len(id_extract_files)} debug files...")
-                ai_id_processor = AIIdProcessor(context)
-                # Load the data into the processor's page_results
-                import json
-                from src.processors.ai_id_processor import IdExtractionResult
-                for file_path in sorted(id_extract_files):
-                    page_id = file_path.stem.replace("id_extract_", "")
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        results = [
-                            IdExtractionResult(
-                                serial_no=item.get("serial_no", ""),
-                                house_no=item.get("house_no", "")
-                            )
-                            for item in data
-                        ]
-                        ai_id_processor.page_results[page_id] = results
-                    except Exception as e:
-                        logger.warning(f"Failed to load {file_path}: {e}")
-                total_loaded = sum(len(v) for v in ai_id_processor.page_results.values())
-                logger.info(f"Loaded {total_loaded} AI ID records from {len(ai_id_processor.page_results)} pages")
+        # For OCR-only runs, try to load existing AI ID data from debug files IF enabled
+        if config.ai.enable_ai_extraction:
+            from src.processors import AIIdProcessor
+            debug_dir = context.output_dir / "debug"
+            if debug_dir.exists():
+                id_extract_files = list(debug_dir.glob("id_extract_page-*.json"))
+                if id_extract_files:
+                    logger.info(f"Loading existing AI ID data from {len(id_extract_files)} debug files...")
+                    ai_id_processor = AIIdProcessor(context)
+                    # Load the data into the processor's page_results
+                    import json
+                    from src.processors.ai_id_processor import IdExtractionResult
+                    for file_path in sorted(id_extract_files):
+                        page_id = file_path.stem.replace("id_extract_", "")
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                            results = [
+                                IdExtractionResult(
+                                    serial_no=item.get("serial_no", ""),
+                                    house_no=item.get("house_no", "")
+                                )
+                                for item in data
+                            ]
+                            ai_id_processor.page_results[page_id] = results
+                        except Exception as e:
+                            logger.warning(f"Failed to load {file_path}: {e}")
+                    total_loaded = sum(len(v) for v in ai_id_processor.page_results.values())
+                    logger.info(f"Loaded {total_loaded} AI ID records from {len(ai_id_processor.page_results)} pages")
+
     
     # Step: Merge cropped images
     if args.step in ["merge", "all"]:
@@ -956,7 +976,8 @@ def process_extracted_folder(
         # If we just ran OCR, document is populated
         if args.step in ["ocr", "all"] and document.status == "completed":
             # Check if there are any missing house numbers and extract them using AI
-            if document.pages:
+            # Only run if AI extraction is enabled
+            if document.pages and config.ai.enable_ai_extraction:
                 logger.info("Checking for missing house numbers...")
                 from src.processors import MissingHouseNumberProcessor
                 
@@ -976,6 +997,9 @@ def process_extracted_folder(
                     if result.extracted_count > 0:
                         output_path = store.save_document(document)
                         logger.info(f"Updated document with extracted house numbers: {output_path}")
+            elif document.pages and not config.ai.enable_ai_extraction:
+                logger.info("Missing house number extraction SKIPPED (AI_ENABLE_EXTRACTION=false)")
+
 
     # Step: CSV Export
     if args.csv or args.step == "csv":
