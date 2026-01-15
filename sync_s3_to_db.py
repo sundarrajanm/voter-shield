@@ -2,28 +2,42 @@
 Sync CSV files from S3 to PostgreSQL database.
 
 This script:
-1. Lists CSV files in S3 bucket (metadata and voters)
-2. Checks which documents are missing from the PostgreSQL metadata table
-3. Downloads and imports missing CSV files to the database
+1. Discovers assembly sub-folders within the S3 prefix (one level deep)
+2. Lists CSV files in each sub-folder (metadata and voters)
+3. Checks database by pdf_name to skip existing documents (no download needed)
+4. For new documents: Downloads CSVs from S3 (or uses cache if available)
+5. Inserts only NEW documents to the database (never updates existing ones)
+6. Generates a timestamped JSON report of all operations
+
+Caching Strategy:
+- Dry-run (--dry-run): Downloads new files and saves to csv_cache/ folder
+- Normal run: Uses cached files if available, then auto-deletes cache after completion
 
 Usage:
-    python sync_s3_to_db.py [--dry-run] [--limit N]
+    # Preview sync and cache files for later
+    python sync_s3_to_db.py --dry-run
+    
+    # Actually sync using cached files (if available from dry-run)
+    python sync_s3_to_db.py
     
 Arguments:
-    --dry-run: Show what would be synced without making changes
+    --dry-run: Show what would be synced without making changes (saves cache)
     --limit N: Limit the number of documents to sync (for testing)
+    --s3-output: S3 path to upload the sync report JSON
 """
 
 import argparse
 import csv
 import io
+import json
 import logging
 import os
 import re
 import sys
 import uuid
+from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Literal
 from dataclasses import dataclass
 
 import psycopg2
@@ -46,9 +60,33 @@ class CSVPair:
     pdf_name: str  # Document name (without file extension)
     metadata_key: str  # S3 key for metadata CSV
     voters_key: str  # S3 key for voters CSV
+    assembly_folder: str = ""  # Assembly folder name
     
     def __repr__(self):
-        return f"CSVPair(pdf_name='{self.pdf_name}')"
+        return f"CSVPair(pdf_name='{self.pdf_name}', assembly='{self.assembly_folder}')"
+
+
+@dataclass
+class SyncOperation:
+    """Represents a single sync operation."""
+    document_id: str
+    pdf_name: str
+    operation: Literal['created', 'updated', 'skipped']
+    assembly_folder: str
+    timestamp: str
+    voters_count: int = 0
+    
+
+@dataclass
+class SyncReport:
+    """Aggregate sync report."""
+    sync_timestamp: str
+    total_documents_processed: int
+    documents_created: int
+    documents_updated: int
+    documents_skipped: int
+    assemblies_processed: List[str]
+    operations: List[Dict]
 
 
 class S3ToDBSyncer:
@@ -68,6 +106,7 @@ class S3ToDBSyncer:
         self.dry_run = dry_run
         self.s3_client = None
         self.db_conn = None
+        self.cache_dir = Path("csv_cache")
         
     def __enter__(self):
         """Context manager entry."""
@@ -98,9 +137,22 @@ class S3ToDBSyncer:
                 sslmode=self.config.db.ssl_mode
             )
             self.db_conn.autocommit = False
-            logger.info("Connected to PostgreSQL database")
+            
+            # Test the connection
+            with self.db_conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                result = cur.fetchone()
+                if not result or result[0] != 1:
+                    raise Exception("Database connection test failed")
+            
+            logger.info("Connected to PostgreSQL database (connection verified)")
         except Exception as e:
-            raise ProcessingError(f"Failed to connect to database: {e}")
+            if self.config.db.required:
+                raise ProcessingError(f"Failed to connect to database: {e}")
+            else:
+                logger.warning(f"Failed to connect to database: {e}")
+                logger.warning("DB_REQUIRED=false, continuing without database (sync operations will be limited)")
+                self.db_conn = None
             
     def _cleanup(self):
         """Clean up connections."""
@@ -110,7 +162,7 @@ class S3ToDBSyncer:
             
     def list_s3_csv_files(self, bucket: str, prefix: str) -> List[CSVPair]:
         """
-        List CSV files in S3 and pair metadata with voters files.
+        List CSV files in S3 by discovering sub-folders and pairing metadata with voters files.
         
         Args:
             bucket: S3 bucket name
@@ -119,107 +171,115 @@ class S3ToDBSyncer:
         Returns:
             List of CSVPair objects
         """
-        logger.info(f"Listing CSV files in s3://{bucket}/{prefix}")
+        logger.info(f"Discovering assembly sub-folders in s3://{bucket}/{prefix}")
         
         try:
+            # First, list all objects with the prefix to discover sub-folders
             response = self.s3_client.list_objects_v2(
                 Bucket=bucket,
-                Prefix=prefix
+                Prefix=prefix,
+                Delimiter='/'
             )
             
-            objects = response.get('Contents', [])
-            logger.info(f"Found {len(objects)} objects in S3")
+            # Get sub-folders (CommonPrefixes)
+            common_prefixes = response.get('CommonPrefixes', [])
+            assembly_folders = [cp['Prefix'] for cp in common_prefixes]
             
-            # Separate metadata and voters files
-            metadata_files = {}  # pdf_name -> key
-            voters_files = {}    # pdf_name -> key
+            logger.info(f"Found {len(assembly_folders)} assembly sub-folders")
             
-            for obj in objects:
-                key = obj['Key']
+            all_csv_pairs = []
+            
+            # Process each assembly folder
+            for assembly_prefix in assembly_folders:
+                assembly_name = assembly_prefix.rstrip('/').split('/')[-1]
+                logger.info(f"Processing assembly folder: {assembly_name}")
                 
-                # Skip non-CSV files
-                if not key.endswith('.csv'):
-                    continue
-                    
-                # Extract filename from key
-                filename = key.split('/')[-1]
+                # List CSV files in this assembly folder
+                folder_response = self.s3_client.list_objects_v2(
+                    Bucket=bucket,
+                    Prefix=assembly_prefix
+                )
                 
-                # Parse filename to get pdf_name
-                # Format: "Tamil Nadu-(S22)_Coimbatore (North)-(AC118)_1_metadata.csv"
-                # or:     "Tamil Nadu-(S22)_Coimbatore (North)-(AC118)_1_voters.csv"
+                objects = folder_response.get('Contents', [])
+                logger.info(f"  Found {len(objects)} objects in {assembly_name}")
                 
-                if filename.endswith('_metadata.csv'):
-                    # Remove "_metadata.csv" to get pdf_name
-                    pdf_name = filename[:-13]  # len("_metadata.csv") = 13
-                    # Convert to database format: (AC118) -> (AC118_
-                    # Based on user's note: CSV has (AC118)_1 but DB has (AC118_1
-                    pdf_name_db = self._convert_to_db_format(pdf_name)
-                    metadata_files[pdf_name_db] = key
+                # Separate metadata and voters files
+                metadata_files = {}  # pdf_name -> key
+                voters_files = {}    # pdf_name -> key
+                
+                for obj in objects:
+                    key = obj['Key']
                     
-                elif filename.endswith('_voters.csv'):
-                    # Remove "_voters.csv" to get pdf_name
-                    pdf_name = filename[:-11]  # len("_voters.csv") = 11
-                    # Convert to database format
-                    pdf_name_db = self._convert_to_db_format(pdf_name)
-                    voters_files[pdf_name_db] = key
+                    # Skip non-CSV files
+                    if not key.endswith('.csv'):
+                        continue
+                        
+                    # Extract filename from key
+                    filename = key.split('/')[-1]
                     
-            # Pair them up
-            csv_pairs = []
-            for pdf_name, metadata_key in metadata_files.items():
-                if pdf_name in voters_files:
-                    csv_pairs.append(CSVPair(
-                        pdf_name=pdf_name,
-                        metadata_key=metadata_key,
-                        voters_key=voters_files[pdf_name]
-                    ))
-                else:
-                    logger.warning(f"No voters CSV found for: {pdf_name}")
+                    # Parse filename to get pdf_name
+                    # Format: "Tamil Nadu-(S22)_Coimbatore (North)-(AC118)_1_metadata.csv"
+                    # or:     "Tamil Nadu-(S22)_Coimbatore (North)-(AC118)_1_voters.csv"
                     
-            logger.info(f"Found {len(csv_pairs)} complete CSV pairs")
-            return csv_pairs
+                    if filename.endswith('_metadata.csv'):
+                        # Remove "_metadata.csv" to get pdf_name
+                        pdf_name = filename[:-13]  # len("_metadata.csv") = 13
+                        # Convert to database format: (AC118) -> (AC118_
+                        # Based on user's note: CSV has (AC118)_1 but DB has (AC118_1
+                        pdf_name_db = self._convert_to_db_format(pdf_name)
+                        metadata_files[pdf_name_db] = key
+                        
+                    elif filename.endswith('_voters.csv'):
+                        # Remove "_voters.csv" to get pdf_name
+                        pdf_name = filename[:-11]  # len("_voters.csv") = 11
+                        # Convert to database format
+                        pdf_name_db = self._convert_to_db_format(pdf_name)
+                        voters_files[pdf_name_db] = key
+                        
+                # Pair them up
+                for pdf_name, metadata_key in metadata_files.items():
+                    if pdf_name in voters_files:
+                        all_csv_pairs.append(CSVPair(
+                            pdf_name=pdf_name,
+                            metadata_key=metadata_key,
+                            voters_key=voters_files[pdf_name],
+                            assembly_folder=assembly_name
+                        ))
+                    else:
+                        logger.warning(f"  No voters CSV found for: {pdf_name} in {assembly_name}")
+                        
+                logger.info(f"  Found {len([p for p in all_csv_pairs if p.assembly_folder == assembly_name])} complete CSV pairs in {assembly_name}")
+                    
+            logger.info(f"Total: Found {len(all_csv_pairs)} complete CSV pairs across all assemblies")
+            return all_csv_pairs
             
         except Exception as e:
             raise ProcessingError(f"Failed to list S3 objects: {e}")
             
     def _convert_to_db_format(self, csv_name: str) -> str:
         """
-        Convert CSV filename format to database pdf_name format.
-        
-        CSV format:  Tamil Nadu-(S22)_Coimbatore (North)-(AC118)_1
-        DB format:   Tamil Nadu-(S22)_Coimbatore (North)-(AC118_1
-        
-        The difference is the closing parenthesis before the final number.
+        Return CSV filename as-is (no conversion needed).
         
         Args:
             csv_name: Name from CSV file
             
         Returns:
-            Name in database format
+            Name in database format (same as input)
         """
-        # Pattern: ends with )_<number>
-        # Replace )_<number> with _<number>
-        pattern = r'\)_(\d+)$'
-        match = re.search(pattern, csv_name)
-        
-        if match:
-            # Remove the closing parenthesis before the underscore
-            number = match.group(1)
-            # Replace )_N with _N
-            db_name = re.sub(r'\)_(\d+)$', r'_\1', csv_name)
-            logger.debug(f"Converted CSV name '{csv_name}' to DB name '{db_name}'")
-            return db_name
-        else:
-            # No match, return as-is
-            logger.debug(f"No conversion needed for '{csv_name}'")
-            return csv_name
+        # No conversion needed - use filename as-is
+        return csv_name
             
     def get_existing_documents(self) -> set:
         """
         Get set of pdf_names that already exist in the database.
         
         Returns:
-            Set of pdf_name strings
+            Set of pdf_name strings (empty set if no database connection)
         """
+        if self.db_conn is None:
+            logger.warning("No database connection available, returning empty set of existing documents")
+            return set()
+            
         logger.info("Fetching existing documents from database...")
         
         with self.db_conn.cursor() as cur:
@@ -230,22 +290,42 @@ class S3ToDBSyncer:
         logger.info(f"Found {len(existing)} existing documents in database")
         return existing
         
-    def download_csv_from_s3(self, bucket: str, key: str) -> str:
+    def download_csv_from_s3(self, bucket: str, key: str, cache_key: Optional[str] = None) -> str:
         """
         Download CSV file from S3 and return contents as string.
+        Uses cache if available, saves to cache during dry-run.
         
         Args:
             bucket: S3 bucket name
             key: S3 object key
+            cache_key: Optional cache file path (relative to cache_dir)
             
         Returns:
             CSV contents as string
         """
+        # Check cache first if cache_key provided
+        if cache_key:
+            cache_file = self.cache_dir / cache_key
+            if cache_file.exists():
+                logger.debug(f"Using cached file: {cache_file}")
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return f.read()
+        
+        # Download from S3
         logger.debug(f"Downloading s3://{bucket}/{key}")
         
         try:
             response = self.s3_client.get_object(Bucket=bucket, Key=key)
             content = response['Body'].read().decode('utf-8')
+            
+            # Save to cache if cache_key provided and in dry-run mode
+            if cache_key and self.dry_run:
+                cache_file = self.cache_dir / cache_key
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                logger.debug(f"Cached file: {cache_file}")
+            
             return content
         except Exception as e:
             raise ProcessingError(f"Failed to download {key}: {e}")
@@ -312,18 +392,57 @@ class S3ToDBSyncer:
             'pin_code': get_val(['pin_code', 'administrative_address_pin_code'], ''),
             'panchayat_name': get_val(['panchayat_name', 'Panchayat Name'], ''),
             
-            # JSON structures (reconstruct if flattened)
-            'constituency_details': row.get('constituency_details', '{}'),
-            'administrative_address': row.get('administrative_address', '{}'),
-            'polling_details': row.get('polling_details', '{}'),
-            'detailed_elector_summary': row.get('detailed_elector_summary', '{}'),
-            'authority_verification': row.get('authority_verification', '{}'),
-            'output_identifier': row.get('output_identifier', ''),
+            # JSON structures - build from flattened CSV fields
+            'constituency_details': {
+                'assembly_constituency_name': get_val('constituency_details_assembly_constituency_name', ''),
+                'assembly_constituency_number': get_val('constituency_details_assembly_constituency_number', ''),
+                'assembly_reservation_status': get_val('constituency_details_assembly_reservation_status', ''),
+                'parliamentary_constituency_name': get_val('constituency_details_parliamentary_constituency_name', ''),
+                'parliamentary_constituency_number': get_val('constituency_details_parliamentary_constituency_number', ''),
+                'parliamentary_reservation_status': get_val('constituency_details_parliamentary_reservation_status', ''),
+                'part_number': get_val('constituency_details_part_number', ''),
+            },
+            'administrative_address': {
+                'town_or_village': get_val(['town_or_village', 'administrative_address_town_or_village'], ''),
+                'main_town_or_village': get_val(['main_town_or_village', 'Main Town or Village'], ''),
+                'ward_number': get_val(['ward_number', 'administrative_address_ward_number'], ''),
+                'post_office': get_val(['post_office', 'administrative_address_post_office', 'Post Office'], ''),
+                'police_station': get_val(['police_station', 'administrative_address_police_station'], ''),
+                'taluk_or_block': get_val(['taluk_or_block', 'administrative_address_taluk_or_block', 'Taluk or Block'], ''),
+                'subdivision': get_val(['subdivision', 'administrative_address_subdivision', 'Subdivision'], ''),
+                'district': get_val(['district', 'administrative_address_district'], ''),
+                'pin_code': get_val(['pin_code', 'administrative_address_pin_code'], ''),
+                'panchayat_name': get_val(['panchayat_name', 'Panchayat Name'], ''),
+            },
+            'polling_details': {
+                'polling_station_name': get_val('polling_details_polling_station_name', ''),
+                'polling_station_number': get_val('polling_details_polling_station_number', ''),
+                'polling_station_address': get_val('polling_details_polling_station_address', ''),
+                'polling_station_type': get_val('polling_details_polling_station_type', ''),
+                'auxiliary_polling_station_count': get_val('polling_details_auxiliary_polling_station_count', ''),
+                'sections': get_val('polling_details_sections', ''),
+            },
+            'detailed_elector_summary': {
+                'net_total': {
+                    'male': get_val('detailed_elector_summary_net_total_male', ''),
+                    'female': get_val('detailed_elector_summary_net_total_female', ''),
+                    'third_gender': get_val('detailed_elector_summary_net_total_third_gender', ''),
+                    'total': get_val('detailed_elector_summary_net_total_total', ''),
+                },
+                'serial_number_range': {
+                    'start': get_val('detailed_elector_summary_serial_number_range_start', ''),
+                    'end': get_val('detailed_elector_summary_serial_number_range_end', ''),
+                }
+            },
+            'authority_verification': {
+                'signature_present': get_val('authority_verification_signature_present', ''),
+            },
+            'output_identifier': get_val('output_identifier', ''),
+            
+            # NEW: Flat metadata fields (for new schema columns)
+            'language_detected': get_val('language_detected', '[]'),  # May be JSON string or list
+            'total_flat': int(get_val(['total', 'detailed_elector_summary_net_total_total'], 0) or 0) or None,  # Flat total field
         }
-        
-        # If JSON fields are empty/curled braces but we have flat data, build them?
-        # For now, let's rely on what's physically in the CSV or the flat fields we mapped above
-        # The main insert uses the flat fields directly for the columns.
         
         return data
         
@@ -375,16 +494,19 @@ class S3ToDBSyncer:
             
         return voters
         
-    def insert_metadata(self, metadata: Dict):
+    def insert_metadata(self, metadata: Dict) -> Literal['created']:
         """
-        Insert metadata record into database.
+        Insert new metadata record in database.
         
         Args:
             metadata: Metadata dictionary
+            
+        Returns:
+            'created' when new record is inserted
         """
         if self.dry_run:
             logger.info(f"[DRY RUN] Would insert metadata: {metadata['pdf_name']}")
-            return
+            return 'created'
             
         query = """
             INSERT INTO metadata (
@@ -393,6 +515,7 @@ class S3ToDBSyncer:
                 total_pages, total_voters_extracted, 
                 town_or_village, main_town_or_village, ward_number, post_office,
                 police_station, taluk_or_block, subdivision, district, pin_code, panchayat_name,
+                language_detected, total,
                 constituency_details, administrative_address,
                 polling_details, detailed_elector_summary, authority_verification,
                 output_identifier
@@ -403,36 +526,10 @@ class S3ToDBSyncer:
                 %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s,
                 %s, %s,
+                %s, %s,
                 %s, %s, %s,
                 %s
             )
-            ON CONFLICT (document_id) DO UPDATE SET
-                pdf_name = EXCLUDED.pdf_name,
-                state = EXCLUDED.state,
-                year = EXCLUDED.year,
-                revision_type = EXCLUDED.revision_type,
-                qualifying_date = EXCLUDED.qualifying_date,
-                publication_date = EXCLUDED.publication_date,
-                roll_type = EXCLUDED.roll_type,
-                roll_identification = EXCLUDED.roll_identification,
-                total_pages = EXCLUDED.total_pages,
-                total_voters_extracted = EXCLUDED.total_voters_extracted,
-                town_or_village = EXCLUDED.town_or_village,
-                main_town_or_village = EXCLUDED.main_town_or_village,
-                ward_number = EXCLUDED.ward_number,
-                post_office = EXCLUDED.post_office,
-                police_station = EXCLUDED.police_station,
-                taluk_or_block = EXCLUDED.taluk_or_block,
-                subdivision = EXCLUDED.subdivision,
-                district = EXCLUDED.district,
-                pin_code = EXCLUDED.pin_code,
-                panchayat_name = EXCLUDED.panchayat_name,
-                constituency_details = EXCLUDED.constituency_details,
-                administrative_address = EXCLUDED.administrative_address,
-                polling_details = EXCLUDED.polling_details,
-                detailed_elector_summary = EXCLUDED.detailed_elector_summary,
-                authority_verification = EXCLUDED.authority_verification,
-                output_identifier = EXCLUDED.output_identifier
         """
         
         # Parse JSON fields (they might be strings in CSV)
@@ -469,6 +566,8 @@ class S3ToDBSyncer:
                 metadata['district'],
                 metadata['pin_code'],
                 metadata['panchayat_name'],
+                Json(parse_json_field(metadata.get('language_detected', '[]'))),  # NEW: Flat field
+                metadata.get('total_flat'),  # NEW: Flat field
                 Json(parse_json_field(metadata['constituency_details'])),
                 Json(parse_json_field(metadata['administrative_address'])),
                 Json(parse_json_field(metadata['polling_details'])),
@@ -478,35 +577,33 @@ class S3ToDBSyncer:
             ))
             
         self.db_conn.commit()
-        logger.info(f"Inserted metadata: {metadata['pdf_name']}")
         
-    def insert_voters(self, voters: List[Dict]):
+        logger.info(f"Inserted metadata: {metadata['pdf_name']} (document_id: {metadata['document_id']})")
+        
+        return 'created'
+        
+    def insert_voters(self, voters: List[Dict]) -> int:
         """
         Insert voter records into database.
         
         Args:
             voters: List of voter dictionaries
+            
+        Returns:
+            Number of voters inserted
         """
         if not voters:
-            return
+            return 0
             
         if self.dry_run:
             logger.info(f"[DRY RUN] Would insert {len(voters)} voters")
-            return
+            return len(voters)
         
         # Get document_id from first voter (all voters should have same document_id)
         document_id = voters[0].get('document_id') if voters else None
         if not document_id:
             logger.error("Cannot insert voters: no document_id found")
-            return
-            
-        # Delete existing voters for this document to prevent duplicates
-        delete_query = "DELETE FROM voters WHERE document_id = %s"
-        with self.db_conn.cursor() as cur:
-            cur.execute(delete_query, (document_id,))
-            deleted_count = cur.rowcount
-            if deleted_count > 0:
-                logger.info(f"Deleted {deleted_count} existing voters for document {document_id}")
+            return 0
             
         query = """
             INSERT INTO voters (
@@ -548,7 +645,9 @@ class S3ToDBSyncer:
             execute_values(cur, query, values)
             
         self.db_conn.commit()
-        logger.info(f"Inserted {len(voters)} voters for document {document_id}")
+        logger.info(f"  Inserted {len(voters)} voters for document {document_id}")
+        
+        return len(voters)
         
         
     def _ensure_connection(self):
@@ -566,33 +665,76 @@ class S3ToDBSyncer:
             logger.info("Database connection dead. Reconnecting...")
             self._connect()
 
-    def sync_document(self, csv_pair: CSVPair, bucket: str):
+    def sync_document(self, csv_pair: CSVPair, bucket: str) -> Optional[SyncOperation]:
         """
         Sync a single document (metadata + voters) from S3 to database.
+        Only inserts new documents - skips existing ones.
         
         Args:
             csv_pair: CSV pair to sync
             bucket: S3 bucket name
+            
+        Returns:
+            SyncOperation object with details of the operation, or None if failed
         """
-        logger.info(f"Syncing document: {csv_pair.pdf_name}")
+        logger.info(f"Syncing document: {csv_pair.pdf_name} (assembly: {csv_pair.assembly_folder})")
         
         # Ensure connection before starting a transaction
         self._ensure_connection()
         
         try:
-            # Download and parse metadata CSV
-            metadata_csv = self.download_csv_from_s3(bucket, csv_pair.metadata_key)
+            # OPTIMIZATION: Check if document exists by pdf_name BEFORE downloading anything
+            check_query = "SELECT document_id FROM metadata WHERE pdf_name = %s"
+            with self.db_conn.cursor() as cur:
+                cur.execute(check_query, (csv_pair.pdf_name,))
+                exists = cur.fetchone() is not None
+            
+            if exists:
+                # Document already exists, skip without downloading
+                logger.info(f"  Document already exists in database (checked by pdf_name), skipping: {csv_pair.pdf_name}")
+                
+                # Use pdf_name as document_id for skipped entries (since we didn't download metadata)
+                sync_op = SyncOperation(
+                    document_id=csv_pair.pdf_name,  # Fallback to pdf_name
+                    pdf_name=csv_pair.pdf_name,
+                    operation='skipped',
+                    assembly_folder=csv_pair.assembly_folder,
+                    timestamp=datetime.now().isoformat(),
+                    voters_count=0
+                )
+                
+                return sync_op
+            
+            # Document is new, proceed with download and insert
+            # Build cache keys for cached files
+            cache_metadata_key = f"{csv_pair.assembly_folder}/{csv_pair.pdf_name}_metadata.csv"
+            cache_voters_key = f"{csv_pair.assembly_folder}/{csv_pair.pdf_name}_voters.csv"
+            
+            # Download and parse metadata CSV (with caching)
+            metadata_csv = self.download_csv_from_s3(bucket, csv_pair.metadata_key, cache_metadata_key)
             metadata = self.parse_metadata_csv(metadata_csv, csv_pair.pdf_name)
             
-            # Download and parse voters CSV
-            voters_csv = self.download_csv_from_s3(bucket, csv_pair.voters_key)
+            # Download and parse voters CSV (with caching)
+            voters_csv = self.download_csv_from_s3(bucket, csv_pair.voters_key, cache_voters_key)
             voters = self.parse_voters_csv(voters_csv, default_document_id=metadata['document_id'])
             
-            # Insert into database
-            self.insert_metadata(metadata)
-            self.insert_voters(voters)
+            # Insert into database (only in non-dry-run mode)
+            operation = self.insert_metadata(metadata)
+            voters_count = self.insert_voters(voters)
             
-            logger.info(f"Successfully synced: {csv_pair.pdf_name}")
+            logger.info(f"Successfully synced: {csv_pair.pdf_name} ({operation}, {voters_count} voters)")
+            
+            # Create operation record
+            sync_op = SyncOperation(
+                document_id=metadata['document_id'],
+                pdf_name=csv_pair.pdf_name,
+                operation=operation,
+                assembly_folder=csv_pair.assembly_folder,
+                timestamp=datetime.now().isoformat(),
+                voters_count=voters_count
+            )
+            
+            return sync_op
             
         except psycopg2.OperationalError as e:
             # If connection drops during processing, we can't easily retry mid-transaction
@@ -610,57 +752,163 @@ class S3ToDBSyncer:
             logger.error(f"Failed to sync {csv_pair.pdf_name}: {e}", exc_info=True)
             if self.db_conn and not self.db_conn.closed:
                 self.db_conn.rollback()
+            return None
                 
-    def sync_all(self, bucket: str, prefix: str, limit: Optional[int] = None):
+    def sync_all(self, bucket: str, prefix: str, limit: Optional[int] = None, s3_output: Optional[str] = None):
         """
-        Sync all missing documents from S3 to database.
+        Sync new documents from S3 to database (skips existing documents).
         
         Args:
             bucket: S3 bucket name
             prefix: S3 prefix (folder path)
             limit: Optional limit on number of documents to sync
+            s3_output: Optional S3 path to upload the sync report JSON
         """
-        # List CSV files in S3
+        # List CSV files in S3 (now discovers sub-folders)
         csv_pairs = self.list_s3_csv_files(bucket, prefix)
         
-        # Get existing documents from database
-        self._ensure_connection()
-        existing_docs = self.get_existing_documents()
-        
-        # Filter out documents that already exist
-        missing_pairs = [
-            pair for pair in csv_pairs 
-            if pair.pdf_name not in existing_docs
-        ]
-        
-        logger.info(f"Found {len(missing_pairs)} missing documents to sync")
+        logger.info(f"Found {len(csv_pairs)} total documents to process")
         
         if limit:
-            missing_pairs = missing_pairs[:limit]
-            logger.info(f"Limiting to {len(missing_pairs)} documents")
-            
-        # Sync each missing document
-        for i, csv_pair in enumerate(missing_pairs, 1):
-            logger.info(f"[{i}/{len(missing_pairs)}] Processing: {csv_pair.pdf_name}")
+            csv_pairs = csv_pairs[:limit]
+            logger.info(f"Limiting to {len(csv_pairs)} documents")
+        
+        # Track all operations
+        operations: List[SyncOperation] = []
+        
+        # Sync each document
+        for i, csv_pair in enumerate(csv_pairs, 1):
+            logger.info(f"[{i}/{len(csv_pairs)}] Processing: {csv_pair.pdf_name} (assembly: {csv_pair.assembly_folder})")
             
             # Retry loop for single document
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    self.sync_document(csv_pair, bucket)
-                    break # Success, move to next document
+                    sync_op = self.sync_document(csv_pair, bucket)
+                    if sync_op:
+                        operations.append(sync_op)
+                    break  # Success, move to next document
                 except psycopg2.OperationalError:
                     if attempt < max_retries - 1:
                         logger.info(f"Retrying connection for {csv_pair.pdf_name} (Attempt {attempt+2}/{max_retries})")
                         import time
-                        time.sleep(5) # Wait before retry
+                        time.sleep(5)  # Wait before retry
                         continue
                     else:
                         logger.error(f"Failed to sync {csv_pair.pdf_name} after {max_retries} connection attempts.")
                 except Exception:
-                    break # Other errors handled inside sync_document, move to next
+                    break  # Other errors handled inside sync_document, move to next
+        
+        logger.info(f"Sync complete! Processed {len(operations)} documents")
+        
+        # Generate and save sync report
+        if operations:
+            report_path = self.generate_sync_report(operations, s3_output, bucket)
+            logger.info(f"Sync report saved to: {report_path}")
+        else:
+            logger.warning("No operations to report")
+        
+        # Clean up cache directory after normal run (not in dry-run)
+        if not self.dry_run and self.cache_dir.exists():
+            import shutil
+            try:
+                shutil.rmtree(self.cache_dir)
+                logger.info(f"Cleaned up cache directory: {self.cache_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up cache directory: {e}")
+    
+    def generate_sync_report(self, operations: List[SyncOperation], s3_output: Optional[str], bucket: str) -> str:
+        """
+        Generate and save sync report as JSON file.
+        
+        Args:
+            operations: List of SyncOperation objects
+            s3_output: Optional S3 path to upload the report
+            bucket: S3 bucket name
             
-        logger.info(f"Sync complete! Processed {len(missing_pairs)} documents")
+        Returns:
+            Path to the saved report file
+        """
+        # Create sync_logs directory if it doesn't exist
+        logs_dir = Path("sync_logs")
+        logs_dir.mkdir(exist_ok=True)
+        
+        # Generate timestamp for filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"sync_report_{timestamp}.json"
+        file_path = logs_dir / filename
+        
+        # Count operations
+        created_count = sum(1 for op in operations if op.operation == 'created')
+        updated_count = sum(1 for op in operations if op.operation == 'updated')
+        skipped_count = sum(1 for op in operations if op.operation == 'skipped')
+        
+        # Get unique assemblies
+        assemblies = sorted(list(set(op.assembly_folder for op in operations)))
+        
+        # Build report
+        report = {
+            "sync_timestamp": datetime.now().isoformat(),
+            "total_documents_processed": len(operations),
+            "documents_created": created_count,
+            "documents_updated": updated_count,
+            "documents_skipped": skipped_count,
+            "assemblies_processed": assemblies,
+            "operations": [
+                {
+                    "document_id": op.document_id,
+                    "pdf_name": op.pdf_name,
+                    "operation": op.operation,
+                    "assembly_folder": op.assembly_folder,
+                    "voters_count": op.voters_count,
+                    "timestamp": op.timestamp
+                }
+                for op in operations
+            ]
+        }
+        
+        # Save to local file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Sync report saved locally: {file_path}")
+        logger.info(f"  - Created: {created_count} documents")
+        logger.info(f"  - Updated: {updated_count} documents")
+        logger.info(f"  - Skipped: {skipped_count} documents")
+        logger.info(f"  - Assemblies: {len(assemblies)}")
+        
+        # Upload to S3 if requested
+        if s3_output:
+            try:
+                # Parse S3 output path (e.g., "s3://bucket/path/" or just "path/")
+                s3_key = s3_output.replace('s3://', '').strip('/')
+                # If bucket is included in path, extract it
+                if '/' in s3_key:
+                    parts = s3_key.split('/', 1)
+                    if not s3_key.startswith(bucket):
+                        # Use provided bucket and treat s3_output as key prefix
+                        s3_key = f"{s3_key}/{filename}"
+                    else:
+                        # Extract bucket from path
+                        bucket = parts[0]
+                        s3_key = f"{parts[1]}/{filename}" if len(parts) > 1 else filename
+                else:
+                    s3_key = f"{s3_key}/{filename}"
+                
+                # Upload file
+                with open(file_path, 'rb') as f:
+                    self.s3_client.put_object(
+                        Bucket=bucket,
+                        Key=s3_key,
+                        Body=f.read(),
+                        ContentType='application/json'
+                    )
+                
+                logger.info(f"Sync report uploaded to S3: s3://{bucket}/{s3_key}")
+            except Exception as e:
+                logger.error(f"Failed to upload report to S3: {e}", exc_info=True)
+        
+        return str(file_path)
 
 
 def main():
@@ -688,6 +936,11 @@ def main():
         default='2026/1/S22/extraction_results/',
         help="S3 prefix/folder path (default: 2026/1/S22/extraction_results/)"
     )
+    parser.add_argument(
+        '--s3-output',
+        type=str,
+        help="S3 path to upload sync report JSON (e.g., s3://bucket/path/ or just path/)"
+    )
     
     args = parser.parse_args()
     
@@ -704,7 +957,8 @@ def main():
             syncer.sync_all(
                 bucket=args.bucket,
                 prefix=args.prefix,
-                limit=args.limit
+                limit=args.limit,
+                s3_output=args.s3_output
             )
             
         logger.info("Sync completed successfully!")

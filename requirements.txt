@@ -77,3 +77,9 @@ toml>=0.10.2              # TOML parser for AI response parsing
 # pytest>=8.0.0           # Testing
 # black>=24.0.0           # Code formatting
 # ruff>=0.2.0             # Linting
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# Progress bar
+tqdm>=4.66.0

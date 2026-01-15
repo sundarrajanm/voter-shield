@@ -1105,6 +1105,66 @@ def main() -> int:
     logger.info("Electoral Roll PDF Processing Pipeline")
     logger.info(f"Debug mode: {'enabled' if config.debug else 'disabled'}")
     
+    # Database connection check - optional or mandatory based on DB_REQUIRED flag
+    logger.info("=" * 60)
+    if config.db.required:
+        logger.info("DATABASE CONNECTION CHECK (REQUIRED)")
+    else:
+        logger.info("DATABASE CONNECTION CHECK (OPTIONAL)")
+    logger.info("=" * 60)
+    
+    if not config.db.is_configured:
+        if config.db.required:
+            logger.error("✗ Database is NOT configured in .env file")
+            logger.error("TERMINATING: Database connection is required (DB_REQUIRED=true)")
+            logger.info("")
+            logger.info("Please configure database in .env file:")
+            logger.info("  DB_HOST=localhost")
+            logger.info("  DB_PORT=5432")
+            logger.info("  DB_NAME=electoral_rolls")
+            logger.info("  DB_USER=postgres")
+            logger.info("  DB_PASSWORD=your_password")
+            logger.info("=" * 60)
+            return 1
+        else:
+            logger.warning("⚠ Database is NOT configured in .env file")
+            logger.warning("DB_REQUIRED=false, continuing without database")
+            logger.info("=" * 60)
+            # Continue processing without database
+    else:
+        # Database is configured, verify connection
+        logger.info("✓ Database Configuration Found")
+        logger.info(f"    Host: {config.db.host}:{config.db.port}")
+        logger.info(f"    Database: {config.db.name}")
+        logger.info(f"    User: {config.db.user}")
+        logger.info(f"    Required: {config.db.required}")
+        logger.info("")
+        logger.info("Testing database connection...")
+        
+        try:
+            from src.persistence.postgres import PostgresRepository
+            db_repo = PostgresRepository(config.db)
+            connection_successful = db_repo.test_connection()
+            
+            if connection_successful:
+                logger.info("✓ Database connection VERIFIED successfully")
+                logger.info("=" * 60)
+            else:
+                # Connection failed but DB not required
+                logger.warning("⚠ Database connection failed but DB_REQUIRED=false")
+                logger.warning("Continuing without database")
+                logger.info("=" * 60)
+        except Exception as e:
+            if config.db.required:
+                logger.error(f"✗ Database connection FAILED: {e}")
+                logger.error("TERMINATING: Cannot proceed without database connection (DB_REQUIRED=true)")
+                logger.info("=" * 60)
+                return 1
+            else:
+                logger.warning(f"⚠ Database connection failed: {e}")
+                logger.warning("DB_REQUIRED=false, continuing without database")
+                logger.info("=" * 60)
+    
     # Handle --list
     if args.list:
         list_extracted_folders(config)

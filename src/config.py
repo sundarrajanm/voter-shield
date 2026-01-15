@@ -251,6 +251,7 @@ class DBConfig:
     password: str = field(default_factory=lambda: os.getenv("DB_PASSWORD", ""))
     schema: str = field(default_factory=lambda: os.getenv("DB_SCHEMA", "public"))
     ssl_mode: str = field(default_factory=lambda: os.getenv("DB_SSL_MODE", "prefer"))
+    required: bool = field(default_factory=lambda: _get_bool_env("DB_REQUIRED", False))
     
     @property
     def is_configured(self) -> bool:

@@ -155,7 +155,30 @@ class DocumentMetadata:
     raw_response: Optional[str] = None
     
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+        """
+        Convert to dictionary for JSON serialization (NEW FLAT STRUCTURE).
+        
+        Returns only the 5 essential fields:
+        - language_detected
+        - state
+        - electoral_roll_year
+        - pin_code (from administrative_address)
+        - total (from detailed_elector_summary.net_total.total)
+        """
+        return {
+            "language_detected": self.language_detected,
+            "state": self.state,
+            "electoral_roll_year": self.electoral_roll_year,
+            "pin_code": self.administrative_address.pin_code,
+            "total": self.detailed_elector_summary.net_total.total,
+        }
+    
+    def to_dict_legacy(self) -> dict[str, Any]:
+        """
+        Convert to dictionary with full nested structure (LEGACY).
+        
+        Use this method if you need the old nested structure for backward compatibility.
+        """
         return {
             "document_id": self.document_id,
             "language_detected": self.language_detected,
@@ -200,11 +223,47 @@ class DocumentMetadata:
         Create DocumentMetadata from AI response.
         
         Maps the AI response structure to our data model.
-        Handles both:
-        - Fresh AI responses with nested 'document_metadata' structure
-        - Already-saved metadata files with top-level fields
+        Handles THREE formats with backward compatibility:
+        1. NEW FLAT: {language_detected, state, electoral_roll_year, pin_code, total}
+        2. OLD NESTED: {document_metadata: {...}, administrative_address: {...}, ...}
+        3. SAVED FILES: Top-level fields without document_metadata wrapper
         """
         metadata = cls()
+        
+        # Detect structure type
+        is_flat_structure = (
+            "language_detected" in response_data and
+            "total" in response_data and
+            "pin_code" in response_data and
+            "document_metadata" not in response_data and
+            "administrative_address" not in response_data
+        )
+        
+        if is_flat_structure:
+            # NEW FLAT STRUCTURE: Only 5 fields at top-level
+            metadata.language_detected = response_data.get("language_detected", [])
+            metadata.state = response_data.get("state", "")
+            metadata.electoral_roll_year = response_data.get("electoral_roll_year")
+            
+            # Map flat pin_code to administrative_address
+            pin_code = response_data.get("pin_code", "")
+            metadata.administrative_address = AdministrativeAddress(pin_code=pin_code)
+            
+            # Map flat total to detailed_elector_summary.net_total.total
+            total = response_data.get("total")
+            metadata.detailed_elector_summary = DetailedElectorSummary(
+                net_total=ElectorSummary(total=total)
+            )
+            
+            # AI tracking
+            metadata.ai_provider = ai_provider
+            metadata.ai_model = ai_model
+            metadata.ai_input_tokens = input_tokens
+            metadata.ai_output_tokens = output_tokens
+            metadata.ai_cost_usd = cost_usd
+            metadata.ai_extraction_time_sec = extraction_time_sec
+            
+            return metadata
         
         # Document metadata - check nested or top-level
         doc_meta = response_data.get("document_metadata", {})
@@ -237,8 +296,12 @@ class DocumentMetadata:
             part_number=const_data.get("part_number"),
         )
         
-        # Administrative address
+        # Administrative address (with fallback for flat structure)
         addr_data = response_data.get("administrative_address") or {}
+        # Fallback: Check if pin_code exists at top-level (flat structure from DB)
+        if not addr_data and "pin_code" in response_data:
+            addr_data = {"pin_code": response_data.get("pin_code", "")}
+        
         metadata.administrative_address = AdministrativeAddress(
             town_or_village=addr_data.get("town_or_village", ""),
             ward_number=addr_data.get("ward_number", ""),
@@ -271,12 +334,15 @@ class DocumentMetadata:
             auxiliary_polling_station_count=poll_data.get("auxiliary_polling_station_count", 0) or 0,
         )
         
-        # Detailed elector summary
+        # Detailed elector summary (with fallback for flat structure)
         summary_data = response_data.get("detailed_elector_summary") or {}
         range_data = summary_data.get("serial_number_range") or {}
         
         def make_elector_summary(data: Optional[dict]) -> ElectorSummary:
             if not data:
+                # Fallback: Check for flat 'total' at top level
+                if "total" in response_data and not summary_data:
+                    return ElectorSummary(total=response_data.get("total"))
                 return ElectorSummary()
             return ElectorSummary(
                 male=data.get("male"),

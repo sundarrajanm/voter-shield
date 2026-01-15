@@ -517,13 +517,31 @@ class OCRProcessor(BaseProcessor):
                     
                     if ai_result and ai_result.house_no and ai_result.house_no.strip():
                         ai_house = ai_result.house_no.strip()
-                        record.house_no = ai_house
-                        ai_applied_count += 1
-                        if ocr_house != ai_house:
+                        
+                        # NEW LOGIC: If AI house_no is all non-numeric characters (no digits)
+                        # AND OCR has numeric characters, prefer OCR value
+                        should_use_ocr = (
+                            self._is_all_non_numeric(ai_house) and 
+                            self._contains_numeric(ocr_house)
+                        )
+                        
+                        if should_use_ocr:
+                            # Keep OCR value instead of AI
+                            # record.house_no already has ocr_house, so we don't need to set it
+                            ocr_fallback_count += 1
                             self.log_debug(
-                                f"Applied AI house_no '{ai_house}' for serial {serial_key} "
-                                f"on {page_id} (OCR was '{ocr_house}')"
+                                f"Preferring OCR house_no '{ocr_house}' over AI '{ai_house}' for serial {serial_key} "
+                                f"on {page_id} (AI has no numbers, OCR has numbers)"
                             )
+                        else:
+                            # Use AI value (default behavior)
+                            record.house_no = ai_house
+                            ai_applied_count += 1
+                            if ocr_house != ai_house:
+                                self.log_debug(
+                                    f"Applied AI house_no '{ai_house}' for serial {serial_key} "
+                                    f"on {page_id} (OCR was '{ocr_house}')"
+                                )
                     else:
                         # No AI result found for this serial, keep OCR value
                         ocr_fallback_count += 1
@@ -2693,6 +2711,34 @@ class OCRProcessor(BaseProcessor):
         else:
             # No digits found, invalid house number
             return ""
+    
+    def _contains_numeric(self, text: str) -> bool:
+        """
+        Check if text contains any numeric characters.
+        
+        Args:
+            text: String to check
+            
+        Returns:
+            True if text contains at least one digit, False otherwise
+        """
+        if not text:
+            return False
+        return any(c.isdigit() for c in text)
+    
+    def _is_all_non_numeric(self, text: str) -> bool:
+        """
+        Check if text contains ONLY non-numeric characters (no digits at all).
+        
+        Args:
+            text: String to check
+            
+        Returns:
+            True if text has no digits, False if it has any digits
+        """
+        if not text or not text.strip():
+            return False
+        return not any(c.isdigit() for c in text)
     
     def _is_valid_house_number(self, house_no: str) -> bool:
         """

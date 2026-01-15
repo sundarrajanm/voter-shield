@@ -239,10 +239,15 @@ class ImageCropper(BaseProcessor):
             with open(metadata_path, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
             
-            # Navigate to net_total.total
-            detailed_summary = metadata.get("detailed_elector_summary", {})
-            net_total = detailed_summary.get("net_total", {})
-            total = net_total.get("total")
+            
+            # NEW: Try flat structure first
+            total = metadata.get("total")
+            
+            # Fallback: Try nested structure for backward compatibility
+            if total is None:
+                detailed_summary = metadata.get("detailed_elector_summary", {})
+                net_total = detailed_summary.get("net_total", {})
+                total = net_total.get("total")
             
             if total is not None and isinstance(total, int):
                 self.log_debug(f"Expected voter count from metadata: {total}")

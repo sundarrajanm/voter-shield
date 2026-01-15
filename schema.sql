@@ -31,7 +31,11 @@ CREATE TABLE IF NOT EXISTS metadata (
     pin_code TEXT,
     panchayat_name TEXT,
 
-    -- Nested structures stored as JSONB for flexibility
+    -- NEW: Flat metadata fields (migrated from nested structure)
+    language_detected JSONB DEFAULT '[]',  -- Moved from document_metadata.language_detected
+    total INTEGER,  -- Moved from detailed_elector_summary.net_total.total (expected voter count)
+
+    -- DEPRECATED: Nested structures (kept for backward compatibility during migration)
     constituency_details JSONB DEFAULT '{}',
     administrative_address JSONB DEFAULT '{}',
     polling_details JSONB DEFAULT '{}',

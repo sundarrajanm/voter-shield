@@ -1,3 +1,4 @@
+.venv/
 pdfs/
 extract/
 extracted/
@@ -13,3 +14,5 @@ __pycache__/
 venv/
 corrections/
 docs/
+csv_cache/
+aws/

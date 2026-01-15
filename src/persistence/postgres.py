@@ -53,6 +53,37 @@ class PostgresRepository:
                 logger.error(f"Failed to connect to PostgreSQL: {e}")
                 raise
         return self._conn
+    
+    def test_connection(self) -> bool:
+        """
+        Test database connection.
+        
+        Returns:
+            True if connection is successful, False otherwise
+            
+        Raises:
+            Exception if connection fails AND database is required
+        """
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                result = cur.fetchone()
+                if result and result[0] == 1:
+                    logger.info("Database connection test successful")
+                    return True
+                else:
+                    logger.error("Database connection test failed: unexpected result")
+                    if self.config.required:
+                        raise Exception("Database connection test failed")
+                    return False
+        except Exception as e:
+            logger.error(f"Database connection test failed: {e}")
+            if self.config.required:
+                raise
+            else:
+                logger.warning("Database connection failed but DB_REQUIRED=false, continuing without database")
+                return False
         
     def init_db(self):
         """Initialize database schema."""
@@ -88,7 +119,11 @@ class PostgresRepository:
                         pin_code TEXT,
                         panchayat_name TEXT,
                         
-                        -- Nested structures stored as JSONB
+                        -- NEW: Flat metadata fields (migrated from nested structure)
+                        language_detected JSONB DEFAULT '[]',
+                        total INTEGER,
+                        
+                        -- DEPRECATED: Nested structures (kept for backward compatibility)
                         constituency_details JSONB DEFAULT '{}',
                         administrative_address JSONB DEFAULT '{}',
                         polling_details JSONB DEFAULT '{}',
@@ -226,6 +261,7 @@ class PostgresRepository:
                 total_pages, total_voters_extracted, 
                 town_or_village, main_town_or_village, ward_number, post_office,
                 police_station, taluk_or_block, subdivision, district, pin_code, panchayat_name,
+                language_detected, total,
                 constituency_details, administrative_address,
                 polling_details, detailed_elector_summary, authority_verification,
                 output_identifier,
@@ -236,6 +272,7 @@ class PostgresRepository:
                 %s, %s, 
                 %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s,
+                %s, %s,
                 %s, %s,
                 %s, %s, %s,
                 %s,
@@ -249,7 +286,7 @@ class PostgresRepository:
                 qualifying_date = EXCLUDED.qualifying_date,
                 publication_date = EXCLUDED.publication_date,
                 roll_type = EXCLUDED.roll_type,
-                roll_identification = EXCLUDED.roll_identification,
+                roll_identification =EXCLUDED.roll_identification,
                 total_pages = EXCLUDED.total_pages,
                 total_voters_extracted = EXCLUDED.total_voters_extracted,
                 town_or_village = EXCLUDED.town_or_village,
@@ -262,6 +299,8 @@ class PostgresRepository:
                 district = EXCLUDED.district,
                 pin_code = EXCLUDED.pin_code,
                 panchayat_name = EXCLUDED.panchayat_name,
+                language_detected = EXCLUDED.language_detected,
+                total = EXCLUDED.total,
                 constituency_details = EXCLUDED.constituency_details,
                 administrative_address = EXCLUDED.administrative_address,
                 polling_details = EXCLUDED.polling_details,
@@ -299,6 +338,8 @@ class PostgresRepository:
             meta.administrative_address.district,
             meta.administrative_address.pin_code,
             meta.administrative_address.panchayat_name,
+            Json(meta.language_detected),  # NEW: Flat field
+            meta.detailed_elector_summary.net_total.total,  # NEW: Flat field
             Json(meta.constituency_details.to_dict()),
             Json(meta.administrative_address.to_dict()),
             Json(meta.polling_details.to_dict()),

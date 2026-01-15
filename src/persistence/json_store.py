@@ -454,23 +454,38 @@ class JSONStore:
         
         # Filter unwanted metadata keys
         metadata_exclude = {
-            "folder", "document_id", "status", "created_at", "processed_at",
+            "folder", "status", "created_at", "processed_at",
             "language_detected", "page_number_current",
             "ai_metadata_provider", "ai_metadata_model",
             "metadata_document_id", 
-            "document_id",
             "ai_metadata_cost_usd",
             "ai_metadata_extraction_time_sec",
             "ai_metadata_input_tokens",
             "ai_metadata_output_tokens",
-            "authority_verification_designation"
+            "authority_verification_designation",
+            # Exclude these fields as requested
+            "images_count",
+            "pages_count",
+            "year",  # Remove year from CSV
+            "electoral_roll_year",  # Remove electoral_roll_year from CSV
         }
         
-        # Also exclude keys starting with ai_metadata_voter
-        final_meta_row = {
-            k: v for k, v in meta_row.items() 
-            if k not in metadata_exclude and not k.startswith("ai_metadata_voter")
-        }
+        # Also exclude keys starting with ai_metadata_voter and timing keys
+        final_meta_row = {}
+        for k, v in meta_row.items():
+            # Skip excluded keys
+            if k in metadata_exclude:
+                continue
+            # Skip ai_metadata_voter keys
+            if k.startswith("ai_metadata_voter"):
+                continue
+            # Skip timing keys
+            if k.startswith("timing_"):
+                continue
+            final_meta_row[k] = v
+        
+        # Add document_id field with pdf_name value
+        final_meta_row["document_id"] = pdf_name
         
         # Ensure output_identifier is included if provided
         if output_identifier and "output_identifier" not in final_meta_row:

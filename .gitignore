@@ -1,3 +1,4 @@
+.venv/
 .env
 __pycache__/
 *.pyc
@@ -13,3 +14,5 @@ extraction_completed/
 *.tar
 test_*
 missing_voters_pdfs/
+csv_cache/
+aws/

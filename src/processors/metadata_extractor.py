@@ -64,12 +64,12 @@ class MetadataExtractor(BaseProcessor):
         
         Args:
             context: Processing context
-            prompt_path: Path to prompt file (default: prompt.md in project root)
+            prompt_path: Path to prompt file (default: prompt_flat.md in project root)
             force: Overwrite existing metadata
             output_identifier: Optional identifier to include in metadata
         """
         super().__init__(context)
-        self.prompt_path = prompt_path or self.config.base_dir / "prompt.md"
+        self.prompt_path = prompt_path or self.config.base_dir / "prompt_flat.md"
         self.force = force
         self.output_identifier = output_identifier
         self.result: Optional[DocumentMetadata] = None
@@ -307,19 +307,54 @@ class MetadataExtractor(BaseProcessor):
         return images[-2]
 
     def _is_complete(self, data: dict) -> bool:
-        """Check if critical metadata fields are present."""
+        """
+        Check if critical metadata fields are present.
+        
+        Supports both NEW FLAT and OLD NESTED structures.
+        """
         if not data:
             return False
+        
+        # Detect if this is the NEW FLAT structure
+        is_flat = (
+            "language_detected" in data and
+            "total" in data and
+            "pin_code" in data and
+            "document_metadata" not in data
+        )
+        
+        if is_flat:
+            # NEW FLAT STRUCTURE validation
+            langs = data.get("language_detected")
+            if not langs or len(langs) == 0:
+                self.log_warning("Language detected field is empty or missing")
+                return False
             
+            # All 4 fields must be present
+            required_flat_fields = ["language_detected", "state", "pin_code", "total"]
+            for field in required_flat_fields:
+                value = data.get(field)
+                # Allow 0 as valid, but not None or empty string for most fields
+                if value is None or (isinstance(value, str) and not value and field != "state"):
+                    self.log_warning(f"Flat structure missing or empty field: {field}")
+                    return False
+            
+            # Validate total is a number
+            total = data.get("total")
+            if not isinstance(total, (int, float)) or total < 0:
+                self.log_warning(f"Total must be a non-negative number, got: {total}")
+                return False
+            
+            return True
+        
+        # OLD NESTED STRUCTURE validation (backward compatibility)
         constituency = data.get("constituency_details", {})
         if not constituency:
             return False
 
         # Validate Language Detection (Critical)
-        # Check both root and document_metadata (normalized structure)
         doc_meta = data.get("document_metadata", {})
-        # If empty, fallback to root
-        if not doc_meta: 
+        if not doc_meta:
             doc_meta = data
         
         langs = doc_meta.get("language_detected")
@@ -328,7 +363,6 @@ class MetadataExtractor(BaseProcessor):
             return False
             
         # Critical fields that should not be empty
-        # Note: We check for truthiness, so None or "" will trigger retry
         critical_fields = [
             constituency.get("assembly_constituency_name"),
             constituency.get("assembly_constituency_number"),
