@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,13 @@ from .base import BaseProcessor, ProcessingContext
 from ..config import Config
 from ..models import DocumentMetadata, AIUsage
 from ..exceptions import MetadataExtractionError
+
+# Add project root to path for ROI imports
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from rois import PINCODE_ROI, VOTERS_END_ROI
 
 
 # Supported image extensions
@@ -122,6 +130,14 @@ class MetadataExtractor(BaseProcessor):
         
         self.log_info(f"Selected page: front={front_page.name}")
         
+        # Crop and stitch ROIs from front page (pincode + voters_end regions only)
+        cropped_image = self._crop_and_stitch_rois(front_page)
+        if cropped_image is None:
+            self.log_error("Failed to crop ROIs from front page")
+            return False
+        
+        self.log_info("Created cropped ROI image for AI extraction")
+        
         # Load prompt
         prompt_text = self.prompt_path.read_text(encoding="utf-8")
         
@@ -138,7 +154,7 @@ class MetadataExtractor(BaseProcessor):
             try:
                 content, ai_meta = self._call_ai(
                     prompt_text=prompt_text,
-                    front_image=front_page,
+                    cropped_image=cropped_image,
                 )
                 
                 # Parse to validate
@@ -324,18 +340,18 @@ class MetadataExtractor(BaseProcessor):
         )
         
         if is_flat:
-            # NEW FLAT STRUCTURE validation
+            # NEW FLAT STRUCTURE validation (only 3 required fields - state removed since cropped ROIs don't contain it)
             langs = data.get("language_detected")
             if not langs or len(langs) == 0:
                 self.log_warning("Language detected field is empty or missing")
                 return False
             
-            # All 4 fields must be present
-            required_flat_fields = ["language_detected", "state", "pin_code", "total"]
+            # Only 3 fields required (state is nullable since cropped ROIs don't contain it)
+            required_flat_fields = ["language_detected", "pin_code", "total"]
             for field in required_flat_fields:
                 value = data.get(field)
-                # Allow 0 as valid, but not None or empty string for most fields
-                if value is None or (isinstance(value, str) and not value and field != "state"):
+                # Allow 0 as valid, but not None or empty string
+                if value is None or (isinstance(value, str) and not value):
                     self.log_warning(f"Flat structure missing or empty field: {field}")
                     return False
             
@@ -448,17 +464,125 @@ class MetadataExtractor(BaseProcessor):
             table_line_ratio=table_line_ratio
         )
     
+    def _denormalize_roi(self, roi: Tuple[float, float, float, float], h: int, w: int) -> Tuple[int, int, int, int]:
+        """Convert normalized ROI coordinates to pixel coordinates."""
+        x1, y1, x2, y2 = roi
+        return int(x1 * w), int(y1 * h), int(x2 * w), int(y2 * h)
+    
+    def _remove_table_lines_inpaint(self, bgr_img: np.ndarray) -> np.ndarray:
+        """Remove table/grid lines via masking + inpainting; tends to preserve digits better."""
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+
+        bw = cv2.adaptiveThreshold(
+            gray,
+            255,
+            cv2.ADAPTIVE_THRESH_MEAN_C,
+            cv2.THRESH_BINARY_INV,
+            15,
+            10,
+        )
+
+        horiz_len = max(25, min(120, bgr_img.shape[1] // 2))
+        horiz_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (horiz_len, 1))
+        horizontal = cv2.erode(bw, horiz_kernel, iterations=1)
+        horizontal = cv2.dilate(horizontal, horiz_kernel, iterations=1)
+
+        vert_len = max(25, min(120, bgr_img.shape[0] // 2))
+        vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, vert_len))
+        vertical = cv2.erode(bw, vert_kernel, iterations=1)
+        vertical = cv2.dilate(vertical, vert_kernel, iterations=1)
+
+        line_mask = cv2.bitwise_or(horizontal, vertical)
+        line_mask = cv2.dilate(line_mask, np.ones((3, 3), np.uint8), iterations=1)
+
+        cleaned = cv2.inpaint(bgr_img, line_mask, 3, cv2.INPAINT_TELEA)
+        return cleaned
+    
+    def _crop_and_stitch_rois(self, image_path: Path) -> Optional[np.ndarray]:
+        """
+        Crop pincode and voters_end ROIs from image and stitch them together.
+        
+        Args:
+            image_path: Path to the front page image
+            
+        Returns:
+            Stitched BGR image containing both ROIs, or None if failed
+        """
+        try:
+            # Read image
+            img = cv2.imdecode(
+                np.fromfile(str(image_path), dtype=np.uint8),
+                cv2.IMREAD_COLOR
+            )
+            if img is None:
+                self.log_error(f"Failed to read image: {image_path}")
+                return None
+            
+            h, w = img.shape[:2]
+            
+            # Denormalize ROI coordinates
+            pincode_roi_px = self._denormalize_roi(PINCODE_ROI, h, w)
+            voters_roi_px = self._denormalize_roi(VOTERS_END_ROI, h, w)
+            
+            # Crop ROIs
+            x1, y1, x2, y2 = pincode_roi_px
+            pincode_roi = img[y1:y2, x1:x2].copy()
+            
+            x1, y1, x2, y2 = voters_roi_px
+            voters_roi = img[y1:y2, x1:x2].copy()
+            # Clean table lines from voters ROI
+            voters_roi = self._remove_table_lines_inpaint(voters_roi)
+            
+            # Pad to same height for horizontal concatenation
+            target_h = max(pincode_roi.shape[0], voters_roi.shape[0])
+            
+            def pad_to_h(bgr: np.ndarray, new_h: int) -> np.ndarray:
+                if bgr.shape[0] == new_h:
+                    return bgr
+                pad = new_h - bgr.shape[0]
+                return cv2.copyMakeBorder(bgr, 0, pad, 0, 0, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+            
+            pincode_roi = pad_to_h(pincode_roi, target_h)
+            voters_roi = pad_to_h(voters_roi, target_h)
+            
+            # Create separator and stitch
+            sep_w = 28
+            separator = np.ones((target_h, sep_w, 3), dtype=np.uint8) * 255
+            stitched = cv2.hconcat([pincode_roi, separator, voters_roi])
+            
+            # Upscale for better AI readability
+            stitched = cv2.resize(stitched, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            
+            # Optionally save debug image
+            debug_path = self.context.output_dir / f"{self.context.pdf_name}-roi-crop.png"
+            cv2.imwrite(str(debug_path), stitched)
+            self.log_debug(f"Saved ROI crop debug image: {debug_path.name}")
+            
+            return stitched
+            
+        except Exception as e:
+            self.log_error(f"Failed to crop and stitch ROIs: {e}")
+            return None
+    
+    def _encode_image_array(self, bgr_array: np.ndarray) -> str:
+        """Encode BGR numpy array as data URL."""
+        ok, buf = cv2.imencode(".png", bgr_array)
+        if not ok:
+            raise RuntimeError("Failed to PNG-encode image array")
+        b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+        return f"data:image/png;base64,{b64}"
+    
     def _call_ai(
         self,
         prompt_text: str,
-        front_image: Path,
+        cropped_image: np.ndarray,
     ) -> Tuple[str, dict[str, Any]]:
         """
-        Call AI model with front page image.
+        Call AI model with cropped ROI image.
         
         Args:
             prompt_text: System prompt
-            front_image: Front page image path
+            cropped_image: Cropped and stitched ROI image (BGR numpy array)
         
         Returns:
             Tuple of (response content, AI metadata)
@@ -490,10 +614,10 @@ class MetadataExtractor(BaseProcessor):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Front page image."},
+                        {"type": "text", "text": "Cropped ROI image containing pincode and voters_end regions."},
                         {
                             "type": "image_url",
-                            "image_url": {"url": self._encode_image(front_image)}
+                            "image_url": {"url": self._encode_image_array(cropped_image)}
                         },
                     ],
                 },

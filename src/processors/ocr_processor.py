@@ -225,7 +225,7 @@ class OCRProcessor(BaseProcessor):
         
         Args:
             context: Processing context
-            languages: Language codes (for compatibility, Tamil OCR uses both)
+            languages: Language codes (will be auto-detected from metadata if available)
             allow_next_line: Allow value on next line if not found on label line
             dump_raw_ocr: Dump raw OCR text for debugging
             use_cuda: Enable CUDA for Tamil OCR (if available)
@@ -234,7 +234,13 @@ class OCRProcessor(BaseProcessor):
             on_page_complete: Callback(page_id, voters, page_time) called after each page
         """
         super().__init__(context)
-        self.languages = languages
+        # Detect language from metadata and adjust OCR languages accordingly
+        detected_lang = self._detect_language_from_metadata()
+        if detected_lang:
+            self.languages = detected_lang
+            self.log_info(f"Language auto-detected from metadata: {detected_lang}")
+        else:
+            self.languages = languages
         self.allow_next_line = allow_next_line
         self.dump_raw_ocr = dump_raw_ocr
         self.use_cuda = use_cuda
@@ -257,6 +263,51 @@ class OCRProcessor(BaseProcessor):
             model=self.config.ai.model,
         )
     
+    def _detect_language_from_metadata(self) -> Optional[str]:
+        """
+        Detect language from metadata JSON file.
+        
+        Returns:
+            Language string for OCR (e.g., "eng" or "eng+tam" or "tam+eng") or None if not found
+        """
+        try:
+            # Look for metadata JSON file in output directory
+            if not self.context.output_dir:
+                return None
+            
+            metadata_path = self.context.output_dir / f"{self.context.pdf_name}-metadata.json"
+            if not metadata_path.exists():
+                return None
+            
+            # Read metadata
+            import json
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            
+            # Get language_detected field
+            languages_detected = metadata.get("language_detected", [])
+            if not languages_detected:
+                return None
+            
+            # Convert to lowercase for comparison
+            languages_detected_lower = [lang.lower() for lang in languages_detected]
+            
+            # Determine OCR language setting based on detected languages
+            has_tamil = any("tamil" in lang for lang in languages_detected_lower)
+            has_english = any("english" in lang for lang in languages_detected_lower)
+            
+            if has_tamil:
+                # Tamil detected - use both Tamil and English
+                return "tam+eng"
+            elif has_english:
+                # Only English detected - use English only
+                return "eng"
+            
+            return None
+            
+        except Exception as e:
+            self.log_debug(f"Could not detect language from metadata: {e}")
+            return None
+    
     def validate(self) -> bool:
         """Validate prerequisites."""
         # Check OCR availability based on selected engine
@@ -264,7 +315,7 @@ class OCRProcessor(BaseProcessor):
             if not TESSERACT_AVAILABLE:
                 self.log_error("Tesseract OCR not available. Install: pip install pytesseract")
                 return False
-            self.log_info("Using Tesseract OCR (faster on CPU)")
+            self.log_info(f"Using Tesseract OCR (faster on CPU) with languages: {self.languages}")
         else:
             if not TAMIL_OCR_AVAILABLE:
                 self.log_error("Tamil OCR not available. Install: pip install ocr-tamil")
@@ -300,7 +351,12 @@ class OCRProcessor(BaseProcessor):
             return
         
         if OCRProcessor._ocr_instance is None:
-            self.log_info("Initializing Tamil OCR engine (first time, may download models)...")
+            # Determine Tamil OCR language list based on detected languages
+            tamil_ocr_langs = ["english"]  # Default to English only
+            if "tam" in self.languages.lower():
+                tamil_ocr_langs = ["tamil", "english"]  # Include Tamil if detected
+            
+            self.log_info(f"Initializing Tamil OCR engine with languages: {tamil_ocr_langs} (first time, may download models)...")
             try:
                 # Initialize Tamil OCR with text detection enabled
                 # detect=True enables CRAFT text detection
@@ -310,10 +366,10 @@ class OCRProcessor(BaseProcessor):
                     enable_cuda=self.use_cuda,
                     batch_size=8,
                     details=0,  # Just text output for simplicity
-                    lang=["tamil", "english"],
+                    lang=tamil_ocr_langs,
                     recognize_thres=0.5,  # Lower threshold for voter card text
                 )
-                self.log_info("Tamil OCR initialized successfully")
+                self.log_info(f"Tamil OCR initialized successfully with languages: {tamil_ocr_langs}")
             except Exception as e:
                 raise OCRProcessingError(f"Failed to initialize Tamil OCR: {e}")
         
@@ -793,17 +849,37 @@ class OCRProcessor(BaseProcessor):
             
             # OPTIMIZATION: Try to extract EPIC from full text first to avoid Tesseract/ROI overhead
             # This saves ~100-200ms per voter if successful
+            # Epic ID format: Always 3 letters + 7 digits = 10 characters total
             epic_found_in_text = False
-            match = re.search(r'\b([A-Z]{3}\d{6,10})\b', full_text_for_extract.upper())
+            # Use negative lookahead to ensure no extra digits after the 7 digits
+            # This prevents matching 11-char EPICs (3 letters + 8 digits) as valid
+            match = re.search(r'(?<![A-Z0-9])([A-Z]{3}\d{7})(?!\d)', full_text_for_extract.upper())
             if match:
-                result.epic_no = match.group(1)
-                result.epic_valid = True
-                epic_found_in_text = True
+                epic_candidate = match.group(1)
+                # Validate: Must be exactly 10 characters (3 letters + 7 digits)
+                if len(epic_candidate) == 10:
+                    result.epic_no = epic_candidate
+                    result.epic_valid = True
+                    epic_found_in_text = True
+                else:
+                    # This shouldn't happen with the regex, but safety check
+                    self.log_debug(f"Epic ID length mismatch ({epic_candidate}), treating as invalid")
+                    epic_found_in_text = False
             
             if not epic_found_in_text:
                 # Fallback to expensive ROI extraction
                 result.epic_no = self._extract_epic(segment)
-                result.epic_valid = bool(re.fullmatch(r"[A-Z]{3}\d+", result.epic_no))
+                # FIX: If Epic ID has exactly 11 characters (3 letters + 8 digits), treat as invalid
+                # and force AI retry. Valid Epic IDs are exactly 10 characters (3 letters + 7 digits)
+                if len(result.epic_no) == 11:
+                    self.log_debug(f"ROI Epic ID has 11 characters ({result.epic_no}), marking as invalid")
+                    result.epic_valid = False
+                elif len(result.epic_no) == 10:
+                    # Validate format: exactly 3 letters + 7 digits
+                    result.epic_valid = bool(re.fullmatch(r"[A-Z]{3}\d{7}", result.epic_no))
+                else:
+                    # Any other length is also invalid
+                    result.epic_valid = False
             
             # Serial is harder to regex reliably (often just digits), so we keep ROI for now.
             # Extract Serial from ROI (Opencv/Tesseract)
@@ -1042,9 +1118,13 @@ class OCRProcessor(BaseProcessor):
             
             # 1. Try ROI extraction first (fastest and often most accurate for EPIC)
             epic = self._extract_epic(img_bgr)
-            if re.fullmatch(r"[A-Z]{3}\d+", epic):
+            # FIX: If Epic ID has exactly 11 characters, skip this and try AI
+            # Valid Epic IDs are exactly 10 characters (3 letters + 7 digits)
+            if len(epic) == 10 and re.fullmatch(r"[A-Z]{3}\d{7}", epic):
                 self.log_debug(f"EPIC retry successful (ROI): {epic}")
                 return epic
+            elif len(epic) == 11:
+                self.log_debug(f"ROI Epic ID has 11 characters ({epic}), skipping to AI retry")
             
             # 2. Try OCR on just the cropped EPIC region
             epic = self._retry_epic_from_roi_crop(img_bgr, image_name)
@@ -1106,10 +1186,16 @@ class OCRProcessor(BaseProcessor):
                         pass
             
             # Extract EPIC from OCR text
+            # Epic ID format: Always 3 letters + 7 digits = 10 characters total
             full_text = " ".join(line for line in lines if not line.startswith("__RAW__:"))
-            match = re.search(r'\b([A-Z]{3}\d{6,10})\b', full_text.upper())
+            match = re.search(r'(?<![A-Z0-9])([A-Z]{3}\d{7})(?!\d)', full_text.upper())
             if match:
-                return match.group(1)
+                epic_candidate = match.group(1)
+                # Reject if it's 11 characters (likely OCR error)
+                if len(epic_candidate) == 10:
+                    return epic_candidate
+                elif len(epic_candidate) == 11:
+                    self.log_debug(f"ROI crop OCR returned 11-character Epic ID ({epic_candidate}), rejecting")
                 
         except Exception as e:
             self.log_debug(f"EPIC ROI crop OCR error: {e}")
@@ -1130,16 +1216,32 @@ class OCRProcessor(BaseProcessor):
             if epic_crop.size == 0:
                 return ""
             
+            # Save debug image to see what's being sent to AI
+            if hasattr(self.context, 'debug_dir') and self.context.debug_dir:
+                debug_path = self.context.debug_dir / f"epic_ai_retry_{image_name}"
+                cv2.imwrite(str(debug_path), epic_crop)
+                self.log_info(f"Saved AI retry EPIC crop for {image_name} to {debug_path}")
+            
             # Send to AI
             ai_result = self._ai_deleted_detector.extract_fields(image_array=epic_crop)
             
+            self.log_info(f"AI EPIC retry for {image_name}: AI returned '{ai_result.epic_no}' (length: {len(ai_result.epic_no) if ai_result.epic_no else 0})")
+            
             if ai_result.epic_no:
-                # Validate the format
-                if re.fullmatch(r"[A-Z]{3}\d{7,10}", ai_result.epic_no):
+                # Validate the format: Must be exactly 3 letters + 7 digits = 10 characters total
+                # FIX: Explicitly reject 11-character Epic IDs even from AI results
+                if len(ai_result.epic_no) == 10 and re.fullmatch(r"[A-Z]{3}\d{7}", ai_result.epic_no):
+                    self.log_info(f"AI EPIC retry SUCCESS for {image_name}: {ai_result.epic_no}")
                     return ai_result.epic_no
+                elif len(ai_result.epic_no) == 11:
+                    self.log_warning(f"AI returned 11-character Epic ID for {image_name} ({ai_result.epic_no}), rejecting")
+                else:
+                    self.log_warning(f"AI returned Epic ID with invalid format/length for {image_name} ({ai_result.epic_no})")
+            else:
+                self.log_info(f"AI EPIC retry for {image_name}: No EPIC returned")
                     
         except Exception as e:
-            self.log_debug(f"EPIC AI extraction error: {e}")
+            self.log_error(f"EPIC AI extraction error for {image_name}: {e}")
             
         return ""
 
@@ -1161,10 +1263,14 @@ class OCRProcessor(BaseProcessor):
             words = text.split()
             if words: lines.insert(0, "__RAW__:" + "|".join(words))
             
-            epic_match = re.search(r'\b([A-Z]{3}\d{7,10})\b', text.upper())
+            # Epic ID format: Always 3 letters + 7 digits = 10 characters total
+            epic_match = re.search(r'(?<![A-Z0-9])([A-Z]{3}\d{7})(?!\d)', text.upper())
             if epic_match:
-                result.epic_no = epic_match.group(1)
-                result.epic_valid = True
+                epic_candidate = epic_match.group(1)
+                # Only accept if exactly 10 characters (reject 11-character IDs)
+                if len(epic_candidate) == 10:
+                    result.epic_no = epic_candidate
+                    result.epic_valid = True
             
             serial_match = re.search(r'^\s*(\d{1,4})\b', text)
             if serial_match:
@@ -1451,15 +1557,25 @@ class OCRProcessor(BaseProcessor):
             
             # Extract EPIC from ROI (always uses Tesseract if available for best results)
             result.epic_no = self._extract_epic(img_bgr)
-            result.epic_valid = bool(re.fullmatch(r"[A-Z]{3}\d+", result.epic_no))
+            # Validate: Must be exactly 10 characters (3 letters + 7 digits)
+            if len(result.epic_no) == 11:
+                self.log_debug(f"ROI Epic ID has 11 characters ({result.epic_no}), marking as invalid")
+                result.epic_valid = False
+            elif len(result.epic_no) == 10:
+                result.epic_valid = bool(re.fullmatch(r"[A-Z]{3}\d{7}", result.epic_no))
+            else:
+                result.epic_valid = False
             
             # Fallback: Check full text for EPIC if ROI failed
             if not result.epic_valid:
                 full_text = " ".join(line for line in lines if not line.startswith("__RAW__:"))
-                match = re.search(r'\b([A-Z]{3}\d{6,10})\b', full_text.upper())
+                match = re.search(r'(?<![A-Z0-9])([A-Z]{3}\d{7})(?!\d)', full_text.upper())
                 if match:
-                    result.epic_no = match.group(1)
-                    result.epic_valid = True
+                    epic_candidate = match.group(1)
+                    # Only accept if exactly 10 characters
+                    if len(epic_candidate) == 10:
+                        result.epic_no = epic_candidate
+                        result.epic_valid = True
             
             # Extract Serial from ROI
             result.serial_no = self._extract_serial(img_bgr)
@@ -1635,17 +1751,28 @@ class OCRProcessor(BaseProcessor):
             full_text = " ".join(line for line in lines if not line.startswith("__RAW__:"))
             
             # Try to extract EPIC from full text first
+            # Epic ID format: Always 3 letters + 7 digits = 10 characters total
             epic_found_in_text = False
-            match = re.search(r'\b([A-Z]{3}\d{6,10})\b', full_text.upper())
+            match = re.search(r'(?<![A-Z0-9])([A-Z]{3}\d{7})(?!\d)', full_text.upper())
             if match:
-                result.epic_no = match.group(1)
-                result.epic_valid = True
-                epic_found_in_text = True
+                epic_candidate = match.group(1)
+                # Only accept if exactly 10 characters
+                if len(epic_candidate) == 10:
+                    result.epic_no = epic_candidate
+                    result.epic_valid = True
+                    epic_found_in_text = True
             
             if not epic_found_in_text:
                 # Fallback to ROI extraction
                 result.epic_no = self._extract_epic(segment)
-                result.epic_valid = bool(re.fullmatch(r"[A-Z]{3}\d+", result.epic_no))
+                # Validate: Must be exactly 10 characters (3 letters + 7 digits)
+                if len(result.epic_no) == 11:
+                    self.log_debug(f"ROI Epic ID has 11 characters ({result.epic_no}), marking as invalid")
+                    result.epic_valid = False
+                elif len(result.epic_no) == 10:
+                    result.epic_valid = bool(re.fullmatch(r"[A-Z]{3}\d{7}", result.epic_no))
+                else:
+                    result.epic_valid = False
             
             # Extract Serial from ROI
             result.serial_no = self._extract_serial(segment)

@@ -676,6 +676,21 @@ def process_pdf(
                         output_path = store.save_document(document)
                         logger.info(f"Updated document with recovered names: {output_path}")
         
+    # Step 5.5: Fix Invalid EPICs before CSV Export
+    if args.csv or args.step == "csv":
+        if document.status == "completed" or args.step == "csv":
+            logger.info("Step 5.5: Fixing invalid EPICs with AI...")
+            from src.processors.epic_fixer import EPICFixerProcessor
+            
+            epic_fixer = EPICFixerProcessor(context)
+            if epic_fixer.process_document(document):
+                # Save updated document if any EPICs were fixed
+                if epic_fixer.fixed_count > 0:
+                    output_path = store.save_document(document)
+                    logger.info(f"Updated document with {epic_fixer.fixed_count} fixed EPICs: {output_path}")
+            else:
+                logger.info("EPIC fixer not available or skipped")
+    
     # Step 6: CSV Export
     if args.csv or args.step == "csv":
         if document.status == "completed" or args.step == "csv":
@@ -1012,6 +1027,24 @@ def process_extracted_folder(
             logger.info("Loading existing data for CSV export...")
             existing_data = store.load_document(context.pdf_name)
             if existing_data:
+                # Fix invalid EPICs before exporting
+                logger.info("Step 5.5: Fixing invalid EPICs with AI...")
+                from src.processors.epic_fixer import EPICFixerProcessor
+                
+                epic_fixer = EPICFixerProcessor(context)
+                if epic_fixer.process_document(existing_data, pdf_name=context.pdf_name):
+                    # Save updated document if any EPICs were fixed
+                    if epic_fixer.fixed_count > 0:
+                        # Save the updated dict back to JSON file
+                        import json
+                        output_dir = folder / "output"
+                        doc_file = output_dir / f"{context.pdf_name}.json"
+                        with open(doc_file, 'w', encoding='utf-8') as f:
+                            json.dump(existing_data, f, indent=2, ensure_ascii=False)
+                        logger.info(f"Updated document with {epic_fixer.fixed_count} fixed EPICs: {doc_file}")
+                else:
+                    logger.info("EPIC fixer not available or skipped")
+                
                 # For CSV-only mode, we export the existing data as-is
                 # Missing house number extraction requires full document context and is only done during processing
                 logger.info("Exporting existing processed data to CSV...")

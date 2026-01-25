@@ -1,0 +1,5 @@
+# Pincode is in the right column middle section (in the address area with city/state/pincode)
+PINCODE_ROI = (0.634551, 0.470705, 0.964888, 0.608739)
+# Voter end number is in the bottom-right cell of the voters table (slightly expanded width)
+# VOTERS_END_ROI = (0.157500, 0.785000, 0.304775, 0.970209)
+VOTERS_END_ROI = (0.133427, 0.768620, 0.304775, 0.970209)

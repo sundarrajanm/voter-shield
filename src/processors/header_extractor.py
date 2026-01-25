@@ -359,28 +359,21 @@ class HeaderExtractor(BaseProcessor):
             match = re.search(pattern, full_text, re.IGNORECASE | re.DOTALL)
             if match:
                 section_info = match.group(1).strip()
-                # Clean up newlines first - take only the first line which contains the actual section info
+                # FIX: Read street name "as is" with minimal cleaning
+                # Only clean up newlines - take only the first line which contains the actual section info
                 if '\n' in section_info:
                     section_info = section_info.split('\n')[0].strip()
-                # Remove trailing colons and spaces
+                # Remove trailing colons and normalize whitespace
                 section_info = re.sub(r'[:\s]+$', '', section_info)
                 section_info = re.sub(r'\s+', ' ', section_info).strip()
-                # Remove any assembly-related text that might have been captured
-                section_info = re.sub(r'Assembly.*', '', section_info, flags=re.IGNORECASE).strip()
                 # Remove Part No. text that might be captured at the end
                 section_info = re.sub(r'\s*Part\s*(?:No\.?)?\s*:?\s*$', '', section_info, flags=re.IGNORECASE).strip()
-                # Remove OCR artifacts like "LT", "CL", "LL", long dashes, pipes, etc.
-                section_info = re.sub(r'\s+[A-Z]{1,2}\s*$', '', section_info).strip()  # Remove trailing 1-2 letter codes
-                section_info = re.sub(r'[—_\-]{3,}.*$', '', section_info).strip()  # Remove long dashes and anything after
-                section_info = re.sub(r'\s*\|.*$', '', section_info).strip()  # Remove pipe and everything after
-                # Remove Tamil OCR garbage (repetitive vowel marks like ை, க, etc.)
-                section_info = re.sub(r'[ைகி்]+$', '', section_info).strip()  # Remove trailing Tamil artifacts
-                section_info = re.sub(r'\s+[ைகி்ா]+.*$', '', section_info).strip()  # Remove Tamil garbage at end
+                section_info = re.sub(r'\s*பாகம்\s*(?:எண்)?\s*:?\s*\d*\s*$', '', section_info).strip()
                 # Remove ZWNJ characters for cleaner output
                 section_info = section_info.replace('\u200c', '')
                 if section_info:
                     break
-                    break
+        
         
         # --- PART NUMBER PATTERNS ---
         

@@ -5,6 +5,7 @@
 # PDF Processing
 # =========================
 PyMuPDF>=1.24.0           # PDF to image extraction (import as fitz)
+PyPDF2>=3.0.0             # PDF page extraction and manipulation
 
 # =========================
 # Image Processing

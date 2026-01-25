@@ -214,10 +214,21 @@ class MissingNameProcessor(BaseProcessor):
                                 voter.relation_name = ai_rel
                                 ai_made_change = True
                                 
-                        # Update other fields opportunistically
-                        for field in ['relation_type', 'house_no', 'age', 'gender', 'epic_no']:
+                        # Update other fields opportunistically (but NOT epic_no - we don't want to overwrite valid EPICs)
+                        # epic_no is excluded because AI often misparses and corrupts valid EPIC numbers
+                        for field in ['relation_type', 'house_no', 'age', 'gender']:
                              if ai_data.get(field):
                                  setattr(voter, field, ai_data[field])
+                        
+                        # Only update epic_no if current one is invalid AND AI returns a valid format
+                        if not voter.epic_valid and ai_data.get('epic_no'):
+                            import re
+                            ai_epic = ai_data['epic_no'].strip().upper()
+                            if re.fullmatch(r"[A-Z]{3}\d{7}", ai_epic):
+                                self.log_info(f"Recovered EPIC via AI for {voter.serial_no}: '{ai_epic}'")
+                                voter.epic_no = ai_epic
+                                voter.epic_valid = True
+                                ai_made_change = True
 
                         if ai_made_change:
                             voter.processing_method = (voter.processing_method or "") + "+ai_fallback"
